@@ -1,0 +1,46 @@
+{
+  "name": "window-color",
+  "displayName": "Window Color",
+  "description": "Pick a color for this project's window — tints the title bar and the command center.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Themes",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "windowColor.pick",
+        "title": "Set Window Color…",
+        "category": "Window Color"
+      },
+      {
+        "command": "windowColor.clear",
+        "title": "Clear Window Color",
+        "category": "Window Color"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "pnpm run check-types && node esbuild.js --production",
+    "check-types": "tsc --noEmit",
+    "vscode:prepublish": "pnpm run package",
+    "vsix": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/vscode": "~1.90.0",
+    "esbuild": "^0.24.2",
+    "typescript": "^5.7.2"
+  }
+}
