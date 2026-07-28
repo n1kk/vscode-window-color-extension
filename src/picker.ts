@@ -1,13 +1,31 @@
 import * as vscode from 'vscode';
 import { normalizeHex } from './colors';
-import { applyColor, currentColor } from './windowColor';
+import { applyColor, currentColor, currentScope, saveScope, Scope, SCOPES } from './windowColor';
 
 const VIEW_TYPE = 'windowColor.picker';
 const DEFAULT_COLOR = '#3b6ea5';
 
+const SCOPE_CHOICES: readonly { value: Scope; label: string; detail: string }[] = [
+  {
+    value: 'titleBar',
+    label: 'Title bar',
+    detail: 'Title bar and the command center pill.',
+  },
+  {
+    value: 'chrome',
+    label: 'Whole window',
+    detail: 'Adds the activity bar, side bar and status bar.',
+  },
+  {
+    value: 'everything',
+    label: 'Whole window, including editor',
+    detail: 'Also tints the editor, tabs, panel and terminal — heavily muted to keep code readable.',
+  },
+];
+
 type FromWebview =
-  | { type: 'preview'; color: string }
-  | { type: 'apply'; color: string }
+  | { type: 'preview'; color: string; scope: string }
+  | { type: 'apply'; color: string; scope: string }
   | { type: 'cancel' };
 
 let openPanel: vscode.WebviewPanel | undefined;
@@ -23,6 +41,7 @@ export function showPicker(): void {
   }
 
   const original = currentColor();
+  const originalScope = currentScope();
   let committed = false;
 
   const panel = vscode.window.createWebviewPanel(
@@ -32,14 +51,14 @@ export function showPicker(): void {
     { enableScripts: true, retainContextWhenHidden: true },
   );
   openPanel = panel;
-  panel.webview.html = renderHtml(original ?? DEFAULT_COLOR);
+  panel.webview.html = renderHtml(original ?? DEFAULT_COLOR, originalScope);
 
   panel.webview.onDidReceiveMessage(async (message: FromWebview) => {
     switch (message.type) {
       case 'preview': {
         const color = normalizeHex(message.color);
         if (color) {
-          await applyColor(color);
+          await applyColor(color, toScope(message.scope));
         }
         break;
       }
@@ -48,8 +67,10 @@ export function showPicker(): void {
         if (!color) {
           return;
         }
+        const scope = toScope(message.scope);
         committed = true;
-        await applyColor(color);
+        await applyColor(color, scope);
+        await saveScope(scope);
         panel.dispose();
         vscode.window.setStatusBarMessage(`Window color set to ${color}`, 3000);
         break;
@@ -63,12 +84,16 @@ export function showPicker(): void {
   panel.onDidDispose(async () => {
     openPanel = undefined;
     if (!committed) {
-      await applyColor(original);
+      await applyColor(original, originalScope);
     }
   });
 }
 
-function renderHtml(color: string): string {
+function toScope(value: string): Scope {
+  return SCOPES.includes(value as Scope) ? (value as Scope) : 'titleBar';
+}
+
+function renderHtml(color: string, scope: Scope): string {
   const nonce = createNonce();
   const csp = [
     "default-src 'none'",
@@ -111,6 +136,11 @@ function renderHtml(color: string): string {
   }
   input[type="text"].invalid { border-color: var(--vscode-inputValidation-errorBorder); }
   .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+  fieldset { border: none; margin: 0 0 24px; padding: 0; }
+  legend { padding: 0 0 8px; font-weight: 600; }
+  .scope { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; cursor: pointer; }
+  .scope input { margin: 2px 0 0; cursor: pointer; accent-color: var(--vscode-focusBorder); }
+  .scope span.detail { display: block; color: var(--vscode-descriptionForeground); font-size: 0.92em; }
   .swatch {
     width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
     border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.35));
@@ -143,6 +173,17 @@ function renderHtml(color: string): string {
 
   <div class="swatches" id="swatches"></div>
 
+  <fieldset>
+    <legend>Apply to</legend>
+    ${SCOPE_CHOICES.map(
+      ({ value, label, detail }) => `
+    <label class="scope">
+      <input type="radio" name="scope" value="${value}"${value === scope ? ' checked' : ''}>
+      <span>${label}<span class="detail">${detail}</span></span>
+    </label>`,
+    ).join('')}
+  </fieldset>
+
   <div class="actions">
     <button id="apply">Apply</button>
     <button id="cancel" class="secondary">Cancel</button>
@@ -166,12 +207,15 @@ function renderHtml(color: string): string {
   }
 
   const isValid = (value) => /^#[0-9a-f]{6}$/i.test(value.trim());
+  const scope = () => document.querySelector('input[name="scope"]:checked').value;
+  const current = () => (isValid(hex.value.trim()) ? hex.value.trim() : picker.value);
+  const preview = (color) => vscode.postMessage({ type: 'preview', color, scope: scope() });
 
   function select(color) {
     picker.value = color;
     hex.value = color;
     hex.classList.remove('invalid');
-    vscode.postMessage({ type: 'preview', color });
+    preview(color);
   }
 
   picker.addEventListener('input', () => select(picker.value));
@@ -182,13 +226,16 @@ function renderHtml(color: string): string {
     hex.classList.toggle('invalid', !valid);
     if (valid) {
       picker.value = value;
-      vscode.postMessage({ type: 'preview', color: value });
+      preview(value);
     }
   });
 
+  for (const radio of document.querySelectorAll('input[name="scope"]')) {
+    radio.addEventListener('change', () => preview(current()));
+  }
+
   function apply() {
-    const value = isValid(hex.value.trim()) ? hex.value.trim() : picker.value;
-    vscode.postMessage({ type: 'apply', color: value });
+    vscode.postMessage({ type: 'apply', color: current(), scope: scope() });
   }
 
   document.getElementById('apply').addEventListener('click', apply);

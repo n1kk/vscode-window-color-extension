@@ -27,7 +27,27 @@
         "title": "Clear Window Color",
         "category": "Window Color"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Window Color",
+      "properties": {
+        "windowColor.scope": {
+          "type": "string",
+          "default": "titleBar",
+          "enum": [
+            "titleBar",
+            "chrome",
+            "everything"
+          ],
+          "enumDescriptions": [
+            "Title bar and the command center pill.",
+            "Title bar plus the activity bar, side bar and status bar.",
+            "The whole window, including the editor, tabs, panel and terminal (heavily muted)."
+          ],
+          "description": "How much of the window the picked color is applied to. The picker writes your choice here."
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "node esbuild.js",
