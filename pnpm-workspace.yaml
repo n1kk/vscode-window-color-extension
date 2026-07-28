@@ -1,4 +1,7 @@
 # pnpm 11 reads settings from here rather than from package.json.
 # esbuild's postinstall downloads its platform binary, so it must be allowed to build.
+# vsce's two are only needed for publishing to the marketplace, not for `vsce package`.
 allowBuilds:
+  '@vscode/vsce-sign': false
   esbuild: true
+  keytar: false

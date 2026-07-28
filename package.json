@@ -27,27 +27,7 @@
         "title": "Clear Window Color",
         "category": "Window Color"
       }
-    ],
-    "configuration": {
-      "title": "Window Color",
-      "properties": {
-        "windowColor.scope": {
-          "type": "string",
-          "default": "titleBar",
-          "enum": [
-            "titleBar",
-            "chrome",
-            "everything"
-          ],
-          "enumDescriptions": [
-            "Title bar and the command center pill.",
-            "Title bar plus the activity bar, side bar and status bar.",
-            "The whole window, including the editor, tabs, panel and terminal (heavily muted)."
-          ],
-          "description": "How much of the window the picked color is applied to. The picker writes your choice here."
-        }
-      }
-    }
+    ]
   },
   "scripts": {
     "compile": "node esbuild.js",
@@ -55,11 +35,12 @@
     "package": "pnpm run check-types && node esbuild.js --production",
     "check-types": "tsc --noEmit",
     "vscode:prepublish": "pnpm run package",
-    "vsix": "vsce package --no-dependencies"
+    "vsix": "vsce package --no-dependencies --no-rewrite-relative-links"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/vscode": "~1.90.0",
+    "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.24.2",
     "typescript": "^5.7.2"
   }

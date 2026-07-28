@@ -1,8 +1,14 @@
 .vscode/**
+.git/**
+.gitignore
 src/**
 node_modules/**
 esbuild.js
 tsconfig.json
 pnpm-lock.yaml
+pnpm-workspace.yaml
+*.vsix
 **/*.map
 **/*.ts
+*.local
+*.local.*

@@ -2,152 +2,118 @@ import * as vscode from 'vscode';
 import { mix, normalizeHex, readableForeground, withAlpha } from './colors';
 
 const SECTION = 'workbench.colorCustomizations';
-const SCOPE_SETTING = 'windowColor.scope';
 
-/** How much of the window the picked color covers. */
-export type Scope = 'titleBar' | 'chrome' | 'everything';
+/** An independently toggleable part of the window. */
+export type Target = 'titleBar' | 'activityBar' | 'sideBar' | 'statusBar' | 'editor';
 
-export const SCOPES: readonly Scope[] = ['titleBar', 'chrome', 'everything'];
+export const TARGETS: readonly Target[] = [
+  'titleBar',
+  'activityBar',
+  'sideBar',
+  'statusBar',
+  'editor',
+];
 
-/** Keys owned per scope. A scope also owns every key of the scopes before it. */
-const TITLE_BAR_KEYS = [
-  'titleBar.activeBackground',
-  'titleBar.activeForeground',
-  'titleBar.inactiveBackground',
-  'titleBar.inactiveForeground',
-  'titleBar.border',
-  // Command center — the pill in the middle of the title bar showing the project name.
-  'commandCenter.background',
-  'commandCenter.foreground',
-  'commandCenter.border',
-  'commandCenter.activeBackground',
-  'commandCenter.activeForeground',
-  'commandCenter.activeBorder',
-  'commandCenter.inactiveForeground',
-  'commandCenter.inactiveBorder',
-] as const;
-
-const CHROME_KEYS = [
-  'activityBar.background',
-  'activityBar.foreground',
-  'activityBar.inactiveForeground',
-  'activityBar.border',
-  'activityBarBadge.background',
-  'activityBarBadge.foreground',
-  'sideBar.background',
-  'sideBar.foreground',
-  'sideBar.border',
-  'sideBarTitle.foreground',
-  'sideBarSectionHeader.background',
-  'sideBarSectionHeader.foreground',
-  'sideBarSectionHeader.border',
-  'statusBar.background',
-  'statusBar.foreground',
-  'statusBar.border',
-  'statusBarItem.hoverBackground',
-  'statusBarItem.activeBackground',
-  'statusBarItem.remoteBackground',
-  'statusBarItem.remoteForeground',
-] as const;
-
-const EVERYTHING_KEYS = [
-  'editor.background',
-  'editorGroupHeader.tabsBackground',
-  'editorGroupHeader.tabsBorder',
-  'tab.activeBackground',
-  'tab.inactiveBackground',
-  'panel.background',
-  'panel.border',
-  'terminal.background',
-] as const;
-
-/**
- * Everything this extension may have written, across all scopes. Used when
- * clearing or re-applying so switching to a narrower scope leaves nothing behind.
- * Any other key already in `workbench.colorCustomizations` is left untouched.
- */
-const MANAGED_KEYS: readonly string[] = [...TITLE_BAR_KEYS, ...CHROME_KEYS, ...EVERYTHING_KEYS];
+const DEFAULT_TARGETS: readonly Target[] = ['titleBar'];
 
 export type Customizations = Record<string, string>;
 
-/** Derives every color for the given scope from one base color. */
-export function buildCustomizations(hex: string, scope: Scope): Customizations {
+/** Derives the colors for the selected targets from one base color. */
+export function buildCustomizations(hex: string, targets: readonly Target[]): Customizations {
   const bg = normalizeHex(hex) ?? '#000000';
   const fg = readableForeground(bg);
+  const colors: Customizations = {};
 
   // Surfaces layered on top of the base get nudged toward the foreground, so the
-  // whole window stays a single hue instead of introducing a second one.
-  const colors: Customizations = {
-    'titleBar.activeBackground': bg,
-    'titleBar.activeForeground': fg,
-    'titleBar.inactiveBackground': mix(bg, '#7f7f7f', 0.3),
-    'titleBar.inactiveForeground': withAlpha(fg, 0.6),
-    'titleBar.border': mix(bg, fg, 0.2),
+  // window stays a single hue instead of introducing a second one.
+  if (targets.includes('titleBar')) {
+    Object.assign(colors, {
+      'titleBar.activeBackground': bg,
+      'titleBar.activeForeground': fg,
+      'titleBar.inactiveBackground': mix(bg, '#7f7f7f', 0.3),
+      'titleBar.inactiveForeground': withAlpha(fg, 0.6),
+      'titleBar.border': mix(bg, fg, 0.2),
 
-    'commandCenter.background': mix(bg, fg, 0.1),
-    'commandCenter.foreground': fg,
-    'commandCenter.border': mix(bg, fg, 0.25),
-    'commandCenter.activeBackground': mix(bg, fg, 0.2),
-    'commandCenter.activeForeground': fg,
-    'commandCenter.activeBorder': mix(bg, fg, 0.4),
-    'commandCenter.inactiveForeground': withAlpha(fg, 0.7),
-    'commandCenter.inactiveBorder': mix(bg, fg, 0.15),
-  };
-
-  if (scope === 'titleBar') {
-    return colors;
+      // The command center is the pill in the middle showing the project name.
+      'commandCenter.background': mix(bg, fg, 0.1),
+      'commandCenter.foreground': fg,
+      'commandCenter.border': mix(bg, fg, 0.25),
+      'commandCenter.activeBackground': mix(bg, fg, 0.2),
+      'commandCenter.activeForeground': fg,
+      'commandCenter.activeBorder': mix(bg, fg, 0.4),
+      'commandCenter.inactiveForeground': withAlpha(fg, 0.7),
+      'commandCenter.inactiveBorder': mix(bg, fg, 0.15),
+    });
   }
 
-  Object.assign(colors, {
-    'activityBar.background': bg,
-    'activityBar.foreground': fg,
-    'activityBar.inactiveForeground': withAlpha(fg, 0.6),
-    'activityBar.border': mix(bg, fg, 0.2),
-    // The badge has to read against the bar, so it inverts instead of tinting.
-    'activityBarBadge.background': fg,
-    'activityBarBadge.foreground': bg,
-
-    'sideBar.background': bg,
-    'sideBar.foreground': fg,
-    'sideBar.border': mix(bg, fg, 0.2),
-    'sideBarTitle.foreground': fg,
-    'sideBarSectionHeader.background': mix(bg, fg, 0.08),
-    'sideBarSectionHeader.foreground': fg,
-    'sideBarSectionHeader.border': mix(bg, fg, 0.2),
-
-    'statusBar.background': bg,
-    'statusBar.foreground': fg,
-    'statusBar.border': mix(bg, fg, 0.2),
-    'statusBarItem.hoverBackground': mix(bg, fg, 0.15),
-    'statusBarItem.activeBackground': mix(bg, fg, 0.22),
-    'statusBarItem.remoteBackground': mix(bg, fg, 0.15),
-    'statusBarItem.remoteForeground': fg,
-  });
-
-  if (scope === 'chrome') {
-    return colors;
+  if (targets.includes('activityBar')) {
+    Object.assign(colors, {
+      'activityBar.background': bg,
+      'activityBar.foreground': fg,
+      'activityBar.inactiveForeground': withAlpha(fg, 0.6),
+      'activityBar.border': mix(bg, fg, 0.2),
+      // The badge has to read against the bar, so it inverts instead of tinting.
+      'activityBarBadge.background': fg,
+      'activityBarBadge.foreground': bg,
+    });
   }
 
-  // Content areas get a heavily muted tint — a saturated editor background
-  // wrecks syntax highlighting contrast. Mixing toward the theme's own
-  // light/dark end keeps text legible.
-  const neutral = isDarkTheme() ? '#1e1e1e' : '#ffffff';
-  const surface = mix(bg, neutral, 0.9);
-  const raised = mix(bg, neutral, 0.82);
+  if (targets.includes('sideBar')) {
+    Object.assign(colors, {
+      'sideBar.background': bg,
+      'sideBar.foreground': fg,
+      'sideBar.border': mix(bg, fg, 0.2),
+      'sideBarTitle.foreground': fg,
+      'sideBarSectionHeader.background': mix(bg, fg, 0.08),
+      'sideBarSectionHeader.foreground': fg,
+      'sideBarSectionHeader.border': mix(bg, fg, 0.2),
+    });
+  }
 
-  Object.assign(colors, {
-    'editor.background': surface,
-    'editorGroupHeader.tabsBackground': raised,
-    'editorGroupHeader.tabsBorder': mix(bg, fg, 0.2),
-    'tab.activeBackground': surface,
-    'tab.inactiveBackground': raised,
-    'panel.background': surface,
-    'panel.border': mix(bg, fg, 0.2),
-    'terminal.background': surface,
-  });
+  if (targets.includes('statusBar')) {
+    Object.assign(colors, {
+      'statusBar.background': bg,
+      'statusBar.foreground': fg,
+      'statusBar.border': mix(bg, fg, 0.2),
+      'statusBarItem.hoverBackground': mix(bg, fg, 0.15),
+      'statusBarItem.activeBackground': mix(bg, fg, 0.22),
+      'statusBarItem.remoteBackground': mix(bg, fg, 0.15),
+      'statusBarItem.remoteForeground': fg,
+    });
+  }
+
+  if (targets.includes('editor')) {
+    // Content areas get a heavily muted tint — a saturated editor background
+    // wrecks syntax highlighting contrast. Mixing toward the theme's own
+    // light/dark end keeps text legible.
+    const neutral = isDarkTheme() ? '#1e1e1e' : '#ffffff';
+    const surface = mix(bg, neutral, 0.9);
+    const raised = mix(bg, neutral, 0.82);
+
+    Object.assign(colors, {
+      'editor.background': surface,
+      'editorGroupHeader.tabsBackground': raised,
+      'editorGroupHeader.tabsBorder': mix(bg, fg, 0.2),
+      'tab.activeBackground': surface,
+      'tab.inactiveBackground': raised,
+      'panel.background': surface,
+      'panel.border': mix(bg, fg, 0.2),
+      'terminal.background': surface,
+    });
+  }
 
   return colors;
 }
+
+/**
+ * The keys each target owns, derived from the builder itself so the two can
+ * never drift. Any key outside this set is left untouched.
+ */
+const KEYS_BY_TARGET = new Map<Target, readonly string[]>(
+  TARGETS.map((target) => [target, Object.keys(buildCustomizations('#000000', [target]))]),
+);
+
+const MANAGED_KEYS: readonly string[] = [...KEYS_BY_TARGET.values()].flat();
 
 /** Reads the current workspace-level customizations, if any. */
 export function readCustomizations(): Customizations {
@@ -155,42 +121,72 @@ export function readCustomizations(): Customizations {
   return { ...(inspected?.workspaceValue ?? {}) };
 }
 
-/** Current window color, as previously written by this extension. */
+/**
+ * Current window color, as previously written by this extension. These keys hold
+ * the picked color unmodified, so whichever target is enabled, one of them has it.
+ */
+const COLOR_SOURCE_KEYS = [
+  'titleBar.activeBackground',
+  'activityBar.background',
+  'sideBar.background',
+  'statusBar.background',
+] as const;
+
 export function currentColor(): string | undefined {
-  const value = readCustomizations()['titleBar.activeBackground'];
-  return value ? normalizeHex(value) : undefined;
+  const colors = readCustomizations();
+  for (const key of COLOR_SOURCE_KEYS) {
+    const value = colors[key];
+    if (value) {
+      return normalizeHex(value);
+    }
+  }
+  return undefined;
 }
 
-/** The configured scope, falling back to the contributed default. */
-export function currentScope(): Scope {
-  const value = vscode.workspace.getConfiguration().get<string>(SCOPE_SETTING);
-  return SCOPES.includes(value as Scope) ? (value as Scope) : 'titleBar';
+/**
+ * Which targets are currently colored, inferred from the keys present in
+ * settings rather than from a separate stored list — the colors are the single
+ * source of truth, so hand-edits to `settings.json` are picked up too.
+ *
+ * A block counts as on if any of its keys is there, so a partially hand-edited
+ * block is treated as enabled and gets completed on the next apply.
+ */
+export function currentTargets(): Target[] {
+  const colors = readCustomizations();
+  const detected = TARGETS.filter((target) =>
+    KEYS_BY_TARGET.get(target)?.some((key) => key in colors),
+  );
+  return detected.length > 0 ? detected : [...DEFAULT_TARGETS];
+}
+
+/** Narrows unknown input from the webview to valid targets. */
+export function toTargets(value: unknown): Target[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return TARGETS.filter((target) => value.includes(target));
 }
 
 /**
  * Writes the derived colors into the workspace's `.vscode/settings.json`.
  * Passing `undefined` removes only the keys this extension manages.
  */
-export async function applyColor(hex: string | undefined, scope: Scope = currentScope()): Promise<void> {
+export async function applyColor(
+  hex: string | undefined,
+  targets: readonly Target[] = currentTargets(),
+): Promise<void> {
   const merged = readCustomizations();
   for (const key of MANAGED_KEYS) {
     delete merged[key];
   }
   if (hex) {
-    Object.assign(merged, buildCustomizations(hex, scope));
+    Object.assign(merged, buildCustomizations(hex, targets));
   }
 
   const value = Object.keys(merged).length > 0 ? merged : undefined;
   await vscode.workspace
     .getConfiguration()
     .update(SECTION, value, vscode.ConfigurationTarget.Workspace);
-}
-
-/** Persists the scope alongside the colors so reopening the picker remembers it. */
-export async function saveScope(scope: Scope): Promise<void> {
-  await vscode.workspace
-    .getConfiguration()
-    .update(SCOPE_SETTING, scope, vscode.ConfigurationTarget.Workspace);
 }
 
 /** True when a folder or `.code-workspace` is open, i.e. workspace settings can be written. */
@@ -217,7 +213,8 @@ export async function warnIfNativeTitleBar(): Promise<void> {
   }
 }
 
-function isDarkTheme(): boolean {
+/** True when the active color theme is a dark or high-contrast one. */
+export function isDarkTheme(): boolean {
   const kind = vscode.window.activeColorTheme.kind;
   return kind === vscode.ColorThemeKind.Dark || kind === vscode.ColorThemeKind.HighContrast;
 }
