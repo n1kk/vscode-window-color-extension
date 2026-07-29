@@ -2,7 +2,7 @@
   "name": "window-color",
   "displayName": "Unique Window Colors",
   "description": "Color-code your projects.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "n1kk",
   "license": "MIT",
   "repository": {
@@ -39,7 +39,7 @@
     "package": "pnpm run check-types && node esbuild.js --production",
     "check-types": "tsc --noEmit",
     "vscode:prepublish": "pnpm run package",
-    "vsix": "vsce package --no-dependencies --no-rewrite-relative-links"
+    "vsix": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

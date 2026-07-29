@@ -103,19 +103,34 @@ Notes:
 - To remove it: `code --uninstall-extension local.window-color`. That identifier is
   `<publisher>.<name>` from [package.json](package.json).
 
-### Why those `vsce` flags
+### Why that `vsce` flag
 
-`pnpm run vsix` is `vsce package --no-dependencies --no-rewrite-relative-links`.
+`pnpm run vsix` is `vsce package --no-dependencies`. pnpm's symlinked
+`node_modules` confuses `vsce`'s dependency walk; skipping it is safe here
+because esbuild bundles everything into `dist/extension.js` and there are no
+runtime dependencies.
 
-- `--no-dependencies` — pnpm's symlinked `node_modules` confuses `vsce`'s
-  dependency walk. Safe here: esbuild bundles everything into
-  `dist/extension.js` and there are no runtime dependencies.
-- `--no-rewrite-relative-links` — without a `repository` field, `vsce` refuses to
-  package a README containing relative links rather than emit ones it can't
-  resolve. Once `repository` is set this flag can be dropped.
+### README images
 
-`vsce` also warns about the missing `repository` field and missing `LICENSE` file.
-Both are harmless for a local install; fix them before publishing.
+The Marketplace renders the README on its own domain and does **not** serve files
+out of the `.vsix`, so a relative path like `assets/preview.gif` resolves to
+nothing there. `vsce` handles this by rewriting relative links against the
+`repository` field at package time:
+
+```
+assets/preview.gif
+  → https://github.com/n1kk/vscode-window-color-extension/raw/HEAD/assets/preview.gif
+```
+
+So images must be **committed and pushed** to the default branch of a public repo
+before publishing — the Marketplace fetches them from GitHub, not from the package.
+
+Do not pass `--no-rewrite-relative-links`. It suppresses that rewriting and ships
+the raw relative paths, which show up broken on the extension page. (It was needed
+only before `repository` was set, when `vsce` refused to package at all.)
+
+The extension icon is different: it comes from the `icon` field inside the `.vsix`,
+so it works regardless of any of this.
 
 ## Publishing
 
@@ -124,9 +139,8 @@ Only needed if you want this on the Marketplace rather than installed from a fil
 1. Create a publisher at <https://marketplace.visualstudio.com/manage>.
 2. Create an Azure DevOps personal access token (<https://dev.azure.com>) with
    **Marketplace → Manage** scope, for **All accessible organizations**.
-3. Update [package.json](package.json): set `publisher` to your publisher ID
-   (currently `local`), drop `"private": true`, and add `repository`, a `LICENSE`
-   file and an `icon`.
+3. Push any README images to the default branch first — see
+   [README images](#readme-images) above.
 4. Publish:
 
 ```sh
