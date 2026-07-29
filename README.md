@@ -35,13 +35,15 @@ bar, status bar, editor, or any combination. The choice is saved to the project'
 5. Click **Apply**.
 
 **Reset** removes the color, and **Cancel** (or <kbd>Esc</kbd>) discards the preview.
+There is also a **Window Color: Clear Window Color** command if you just want the
+color gone without opening the picker.
 
 ## Commands
 
-| Command                            | Description                             |
-| ---------------------------------- | --------------------------------------- |
-| `Window Color: Set Window Color…`  | Open the picker.                        |
-| `Window Color: Clear Window Color` | Remove the colors this extension wrote. |
+| Command                            | Description                                                     |
+| ---------------------------------- | --------------------------------------------------------------- |
+| `Window Color: Set Window Color…`  | Open the picker.                                                |
+| `Window Color: Clear Window Color` | Remove the colors this extension wrote, without opening the picker. |
 
 ## What gets colored
 
