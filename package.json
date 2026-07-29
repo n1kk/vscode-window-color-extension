@@ -3,9 +3,12 @@
   "displayName": "Window Color",
   "description": "Color-code your projects.",
   "version": "0.0.1",
-  "publisher": "local",
-  "private": true,
+  "publisher": "n1kk",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n1kk/vscode-window-color-extension.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
