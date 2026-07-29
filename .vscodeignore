@@ -1,6 +1,7 @@
 .vscode/**
 .git/**
 .gitignore
+DEVELOPMENT.md
 src/**
 node_modules/**
 esbuild.js
@@ -10,5 +11,5 @@ pnpm-workspace.yaml
 *.vsix
 **/*.map
 **/*.ts
-*.local
-*.local.*
+**/*.local
+**/*.local.*
