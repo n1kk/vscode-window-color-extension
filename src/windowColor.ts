@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { mix, normalizeHex, readableForeground, withAlpha } from './colors';
+import { mix, normalizeHex, readableForeground, ThemePair, withAlpha } from './colors';
 
 const SECTION = 'workbench.colorCustomizations';
 
@@ -16,10 +16,21 @@ export const TARGETS: readonly Target[] = [
 
 const DEFAULT_TARGETS: readonly Target[] = ['titleBar'];
 
-export type Customizations = Record<string, string>;
+/**
+ * Color keys, plus any `[Theme Name]` blocks VS Code applies only under that
+ * theme. This extension writes plain keys, but an earlier version wrote blocks,
+ * and users upgrading from it still have them.
+ */
+export type Customizations = Record<string, string | Record<string, string>>;
 
 /** Derives the colors for the selected targets from one base color. */
-export function buildCustomizations(hex: string, targets: readonly Target[]): Customizations {
+export function buildCustomizations(
+  hex: string,
+  targets: readonly Target[],
+  /** Which end the editor tint mixes toward. The preview needs both, so it is
+   * passed in rather than always read from the theme that happens to be active. */
+  dark: boolean = isDarkTheme(),
+): Customizations {
   const bg = normalizeHex(hex) ?? '#000000';
   const fg = readableForeground(bg);
   const colors: Customizations = {};
@@ -86,7 +97,7 @@ export function buildCustomizations(hex: string, targets: readonly Target[]): Cu
     // Content areas get a heavily muted tint — a saturated editor background
     // wrecks syntax highlighting contrast. Mixing toward the theme's own
     // light/dark end keeps text legible.
-    const neutral = isDarkTheme() ? '#1e1e1e' : '#ffffff';
+    const neutral = dark ? '#1e1e1e' : '#ffffff';
     const surface = mix(bg, neutral, 0.9);
     const raised = mix(bg, neutral, 0.82);
 
@@ -115,7 +126,39 @@ const KEYS_BY_TARGET = new Map<Target, readonly string[]>(
 
 const MANAGED_KEYS: readonly string[] = [...KEYS_BY_TARGET.values()].flat();
 
-/** Reads the current workspace-level customizations, if any. */
+/**
+ * The dark/light pair, stored because only one half of it is ever visible in
+ * `workbench.colorCustomizations` — the color for the theme kind you are not
+ * currently using cannot be recovered from what is written.
+ */
+const PAIR_SETTING = 'windowColor.themeColors';
+
+/** Reads the stored pair, or undefined when one color is used for every theme. */
+export function readPair(): ThemePair | undefined {
+  const value = vscode.workspace.getConfiguration().get<unknown>(PAIR_SETTING);
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const { dark, light } = value as Record<string, unknown>;
+  if (typeof dark !== 'string' || typeof light !== 'string') {
+    return undefined;
+  }
+  const [darkHex, lightHex] = [normalizeHex(dark), normalizeHex(light)];
+  return darkHex && lightHex ? { dark: darkHex, light: lightHex } : undefined;
+}
+
+async function savePair(pair: ThemePair | undefined): Promise<void> {
+  await vscode.workspace
+    .getConfiguration()
+    .update(PAIR_SETTING, pair, vscode.ConfigurationTarget.Workspace);
+}
+
+/** Whichever half of the pair suits the theme that is active right now. */
+export function colorForActiveTheme(pair: ThemePair): string {
+  return isDarkTheme() ? pair.dark : pair.light;
+}
+
+/** Reads the current workspace-level customizations. */
 export function readCustomizations(): Customizations {
   const inspected = vscode.workspace.getConfiguration().inspect<Customizations>(SECTION);
   return { ...(inspected?.workspaceValue ?? {}) };
@@ -132,11 +175,10 @@ const COLOR_SOURCE_KEYS = [
   'statusBar.background',
 ] as const;
 
-export function currentColor(): string | undefined {
-  const colors = readCustomizations();
+export function currentColor(colors: Customizations): string | undefined {
   for (const key of COLOR_SOURCE_KEYS) {
     const value = colors[key];
-    if (value) {
+    if (typeof value === 'string') {
       return normalizeHex(value);
     }
   }
@@ -144,15 +186,13 @@ export function currentColor(): string | undefined {
 }
 
 /**
- * Which targets are currently colored, inferred from the keys present in
- * settings rather than from a separate stored list — the colors are the single
- * source of truth, so hand-edits to `settings.json` are picked up too.
+ * Which targets are colored, inferred from the keys present rather than from a
+ * stored list — so hand-edits to `settings.json` are picked up too.
  *
  * A block counts as on if any of its keys is there, so a partially hand-edited
  * block is treated as enabled and gets completed on the next apply.
  */
-export function currentTargets(): Target[] {
-  const colors = readCustomizations();
+export function currentTargets(colors: Customizations): Target[] {
   const detected = TARGETS.filter((target) =>
     KEYS_BY_TARGET.get(target)?.some((key) => key in colors),
   );
@@ -168,25 +208,120 @@ export function toTargets(value: unknown): Target[] | undefined {
 }
 
 /**
- * Writes the derived colors into the workspace's `.vscode/settings.json`.
- * Passing `undefined` removes only the keys this extension manages.
+ * Returns `base` with this extension's keys replaced, leaving any other color
+ * customizations alone. Pure, so the picker can compute every preview from the
+ * snapshot it took when it opened and cancelling is just writing that back.
  */
-export async function applyColor(
+export function withColor(
+  base: Customizations,
   hex: string | undefined,
-  targets: readonly Target[] = currentTargets(),
-): Promise<void> {
-  const merged = readCustomizations();
-  for (const key of MANAGED_KEYS) {
-    delete merged[key];
-  }
+  targets: readonly Target[],
+): Customizations {
+  const colors = { ...base };
+  stripManaged(colors);
+  stripLegacyThemeBlocks(colors);
   if (hex) {
-    Object.assign(merged, buildCustomizations(hex, targets));
+    Object.assign(colors, buildCustomizations(hex, targets));
   }
+  return colors;
+}
 
-  const value = Object.keys(merged).length > 0 ? merged : undefined;
+function stripManaged(colors: Record<string, unknown>): void {
+  for (const key of MANAGED_KEYS) {
+    delete colors[key];
+  }
+}
+
+function isThemeBlock(key: string): boolean {
+  return key.startsWith('[') && key.endsWith(']');
+}
+
+/**
+ * Clears this extension's keys out of `[Theme Name]` blocks left by an earlier
+ * version. VS Code applies a block *over* the plain keys whenever that theme is
+ * active, so a stale one silently overrides every color picked afterwards.
+ * Anything the user put in a block themselves is kept.
+ */
+function stripLegacyThemeBlocks(colors: Customizations): void {
+  for (const [key, value] of Object.entries(colors)) {
+    if (!isThemeBlock(key) || typeof value !== 'object' || value === null) {
+      continue;
+    }
+    const block = { ...value };
+    stripManaged(block);
+    if (Object.keys(block).length > 0) {
+      colors[key] = block;
+    } else {
+      delete colors[key];
+    }
+  }
+}
+
+/** True when a legacy block still holds any of this extension's keys. */
+export function hasLegacyThemeBlocks(colors: Customizations): boolean {
+  return Object.entries(colors).some(
+    ([key, value]) =>
+      isThemeBlock(key) &&
+      typeof value === 'object' &&
+      value !== null &&
+      MANAGED_KEYS.some((managed) => managed in value),
+  );
+}
+
+/**
+ * One-time cleanup on activation. Without it the stale block keeps winning until
+ * the user happens to apply a color, and cancelling the picker would restore it.
+ */
+export async function migrateLegacyThemeBlocks(): Promise<void> {
+  if (!hasWorkspace()) {
+    return;
+  }
+  const base = readCustomizations();
+  if (!hasLegacyThemeBlocks(base)) {
+    return;
+  }
+  const colors = { ...base };
+  stripLegacyThemeBlocks(colors);
+  await writeCustomizations(colors);
+}
+
+/** Writes computed colors back to the workspace's `.vscode/settings.json`. */
+export async function writeCustomizations(colors: Customizations): Promise<void> {
+  const value = Object.keys(colors).length > 0 ? colors : undefined;
   await vscode.workspace
     .getConfiguration()
     .update(SECTION, value, vscode.ConfigurationTarget.Workspace);
+}
+
+/**
+ * Stores the pair and writes the half that matches the active theme. Passing
+ * `undefined` for `pair` means one color for every theme.
+ */
+export async function applyColor(
+  hex: string | undefined,
+  targets?: readonly Target[],
+  pair?: ThemePair,
+): Promise<void> {
+  const base = readCustomizations();
+  await savePair(hex ? pair : undefined);
+  await writeCustomizations(withColor(base, hex, targets ?? currentTargets(base)));
+}
+
+/**
+ * Repaints for the theme that just became active. Does nothing unless a pair is
+ * stored, so a single-color setup is never rewritten behind the user's back.
+ */
+export async function syncToActiveTheme(): Promise<void> {
+  const pair = readPair();
+  if (!pair || !hasWorkspace()) {
+    return;
+  }
+  const base = readCustomizations();
+  const wanted = colorForActiveTheme(pair);
+  if (currentColor(base) === wanted) {
+    return;
+  }
+  await writeCustomizations(withColor(base, wanted, currentTargets(base)));
 }
 
 /** True when a folder or `.code-workspace` is open, i.e. workspace settings can be written. */

@@ -1,0 +1,12 @@
+{
+  // The webview runs in a browser context, so it needs DOM and must not see
+  // Node or the vscode API. Checked separately for that reason.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["."],
+  "exclude": []
+}

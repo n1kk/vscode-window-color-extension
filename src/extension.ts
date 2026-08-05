@@ -1,15 +1,29 @@
 import * as vscode from 'vscode';
 import { showPicker } from './picker';
-import { applyColor, hasWorkspace, warnIfNativeTitleBar } from './windowColor';
+import {
+  applyColor,
+  hasWorkspace,
+  migrateLegacyThemeBlocks,
+  syncToActiveTheme,
+  warnIfNativeTitleBar,
+} from './windowColor';
 
 export function activate(context: vscode.ExtensionContext): void {
+  // Clear out per-theme blocks written by an earlier version before anything
+  // reads the colors — VS Code applies them over the plain keys, so a leftover
+  // one overrides every color picked afterwards. No-ops when there are none.
+  void migrateLegacyThemeBlocks().then(() => syncToActiveTheme());
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveColorTheme(() => void syncToActiveTheme()),
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('windowColor.pick', async () => {
       if (!requireWorkspace()) {
         return;
       }
       await warnIfNativeTitleBar();
-      showPicker();
+      await showPicker(context.extensionUri);
     }),
 
     vscode.commands.registerCommand('windowColor.clear', async () => {

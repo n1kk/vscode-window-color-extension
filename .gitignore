@@ -5,3 +5,5 @@ out/
 .DS_Store
 *.local
 *.local.*
+.vscode/settings.json
+media/picker.js

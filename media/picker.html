@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}}; script-src 'nonce-{{nonce}}'; font-src {{cspSource}};">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Window Color</title>
+<link rel="stylesheet" href="{{styleUri}}">
+</head>
+<body>
+  <h1>Window color</h1>
+  <p class="hint">Applied live. Saved to <code>.vscode/settings.json</code> when you click Apply.</p>
+
+  <fieldset>
+    <legend>Apply to</legend>
+    <div class="modes">
+      <label class="choice">
+        <input type="radio" name="mode" value="full">
+        Full window
+      </label>
+      <label class="choice">
+        <input type="radio" name="mode" value="parts">
+        Parts
+      </label>
+    </div>
+    <!-- One checkbox per target, filled in from the state below. -->
+    <div class="parts" id="parts"></div>
+  </fieldset>
+
+  <div class="workspace">
+    <div class="palette">
+      <div class="tabs" id="tabs" role="tablist" aria-label="Swatch brightness"></div>
+      <div class="swatches" id="swatches"></div>
+
+      <div class="sync">
+        <label class="choice">
+          <input type="checkbox" id="sync">
+          Adapt to light and dark themes
+        </label>
+        <p class="note">
+          Keeps the matching shade from the other tab and switches to it when you
+          change theme. Off, the one color is used under every theme.
+        </p>
+        <p class="note" id="pairNote"></p>
+      </div>
+    </div>
+
+    <section class="previews">
+      <div class="frame on-dark"></div>
+      <div class="frame on-light"></div>
+    </section>
+  </div>
+
+  <div class="actions">
+    <button id="apply">Apply</button>
+    <button id="reset" class="secondary" title="Remove the window color from this project">Reset</button>
+    <button id="cancel" class="secondary">Cancel</button>
+  </div>
+
+  <!--
+    A cut-off mock of the top of a VS Code window: title bar with window buttons,
+    navigation, command center and panel toggles, then activity bar, file tree and
+    a slice of the editor. Cloned once per theme kind; colors are applied as CSS
+    custom properties, each falling back to a stand-in for an untinted theme.
+  -->
+  <template id="mockTemplate">
+    <div class="mock">
+      <div class="w-title">
+        <span class="w-dots"><i></i><i></i><i></i></span>
+        <span class="w-nav">&#8249; &#8250;</span>
+        <span class="w-cc">window-color</span>
+        <span class="w-panels">&#9707; &#9706; &#9704;</span>
+      </div>
+      <div class="w-body">
+        <div class="w-activity">
+          <span>&#9776;</span><span>&#9906;</span><span>&#9880;</span><span>&#9881;</span>
+        </div>
+        <div class="w-side">
+          <div class="w-head">EXPLORER</div>
+          <div class="w-row">&#9662; src</div>
+          <div class="w-row indent">colors.ts</div>
+          <div class="w-row indent active">picker.ts</div>
+          <div class="w-row indent">window.ts</div>
+          <div class="w-row">README.md</div>
+        </div>
+        <div class="w-editor">
+          <div class="w-tabs"><span class="on">picker.ts</span><span>colors.ts</span></div>
+          <div class="w-code"><div><span class="c">// preview</span></div><div><span class="k">const</span> c = <span class="s">'#3b6ea5'</span>;</div><div><span class="k">function</span> <span class="f">paint</span>(w) {</div><div>  w.<span class="f">tint</span>(c);</div><div>}</div></div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script id="state" type="application/json" nonce="{{nonce}}">{{state}}</script>
+  <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+</body>
+</html>

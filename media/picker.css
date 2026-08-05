@@ -1,0 +1,195 @@
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  padding: 24px;
+  /* Wide enough for the swatch grid and a preview column beside it. */
+  max-width: 632px;
+}
+h1 { font-size: 1.2em; margin: 0 0 4px; }
+p.hint { margin: 0 0 20px; color: var(--vscode-descriptionForeground); }
+.tabs {
+  display: flex; gap: 2px; margin-bottom: 10px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.35));
+}
+.tab {
+  padding: 5px 12px; background: none; border: none; border-bottom: 1px solid transparent;
+  margin-bottom: -1px; color: var(--vscode-descriptionForeground); cursor: pointer;
+}
+.tab:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
+.tab[aria-selected="true"] {
+  color: var(--vscode-foreground);
+  border-bottom-color: var(--vscode-focusBorder);
+}
+/*
+ * The backdrop matches the band, not the editor theme: dark swatches all read
+ * as black against a light page, and light ones wash out against a dark one.
+ */
+.swatches {
+  display: grid;
+  /* Column count follows the grid the extension generated; set from script. */
+  grid-template-columns: repeat(var(--hue-steps), 1fr);
+  gap: 3px; margin-bottom: 24px; max-width: 352px;
+  box-sizing: border-box; padding: 14px; border-radius: 4px;
+  background: #efefef;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+}
+.swatches.on-dark { background: #1c1c1c; }
+fieldset { border: none; margin: 0 0 24px; padding: 0; }
+legend { padding: 0 0 8px; font-weight: 600; }
+.modes { display: flex; gap: 18px; margin-bottom: 10px; }
+.parts { display: flex; flex-wrap: wrap; gap: 6px 16px; padding-left: 20px; }
+.parts.inactive { opacity: 0.4; }
+.choice { display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+.choice input { margin: 0; cursor: pointer; accent-color: var(--vscode-focusBorder); }
+.choice input:disabled, .parts.inactive .choice { cursor: default; }
+.note { margin: 8px 0 0; color: var(--vscode-descriptionForeground); font-size: 0.92em; }
+/* Sits under the grid, so it shares the palette column's width. */
+.sync { max-width: 352px; }
+.sync .note { margin-top: 6px; font-size: 0.88em; line-height: 1.4; }
+.sync .note:empty { margin: 0; }
+.swatch {
+  aspect-ratio: 1; padding: 0; border: none; border-radius: 2px; cursor: pointer;
+}
+.swatch:hover { transform: scale(1.25); }
+.swatch:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 1px; }
+/* Pinned to the backdrop too, or the marker disappears into it. */
+.swatch.selected { outline: 2px solid #1c1c1c; outline-offset: 1px; }
+.swatches.on-dark .swatch.selected { outline-color: #ffffff; }
+/* nowrap: the previews compress beside the grid rather than dropping below it. */
+.workspace { display: flex; flex-wrap: nowrap; gap: 12px; margin-bottom: 24px; }
+/*
+ * Pinned rather than flex:none. The grid's columns are 1fr, so it has no
+ * intrinsic width and would otherwise collapse to let the previews take over.
+ */
+.palette { flex: 0 0 352px; }
+/*
+ * Everything for the mock windows is nested in here and nowhere else, and its
+ * classes are prefixed w-. Both the page and a window want names like tabs, row
+ * and head, and a shared name means page rules apply inside the mock: the file
+ * tree once inherited a margin-bottom that way. The prefix keeps them apart, the
+ * nesting keeps every rule below .previews-deep so a bare page rule cannot
+ * outrank it, and the blanket margin reset covers a page rule setting something
+ * no rule in here mentions.
+ */
+.previews {
+  min-width: 270px;
+  display: flex; flex-direction: column; gap: 14px;
+
+  & * { margin: 0; box-sizing: border-box; }
+
+  /*
+   * No bottom padding, and the frame's own bottom edge is left open, so the
+   * mock runs off the end rather than sitting in a closed box.
+   */
+  & .frame {
+    padding: 14px 14px 0; border-radius: 6px 6px 0 0;
+    border: 1px solid rgba(128, 128, 128, 0.3); border-bottom: none;
+
+    &.on-dark { background: #333333; }
+    &.on-light { background: #dedede; }
+  }
+
+  /* Cut off at the bottom: the top slice of a window, not a whole one. */
+  & .mock {
+    overflow: hidden; user-select: none;
+    font-size: 10px; line-height: 1.5;
+    border: 1px solid rgba(128, 128, 128, 0.35); border-bottom: none;
+    border-radius: 6px 6px 0 0;
+
+    /* Stand-ins for an untinted theme, used wherever a part is not selected. */
+    &.on-dark {
+      --chrome: #2b2b2b; --chrome-fg: #cccccc; --panel: #181818; --panel-fg: #cccccc;
+      --edit: #1f1f1f; --edit-fg: #d4d4d4;
+      --key: #c586c0; --str: #ce9178; --fn: #dcdcaa; --com: #6a9955;
+    }
+    &.on-light {
+      --chrome: #f8f8f8; --chrome-fg: #3b3b3b; --panel: #f8f8f8; --panel-fg: #3b3b3b;
+      --edit: #ffffff; --edit-fg: #3b3b3b;
+      --key: #af00db; --str: #a31515; --fn: #795e26; --com: #008000;
+    }
+
+    & .w-title {
+      display: flex; align-items: center; gap: 6px; padding: 5px 6px;
+      background: var(--tb-bg, var(--chrome)); color: var(--tb-fg, var(--chrome-fg));
+    }
+    & .w-dots {
+      display: flex; gap: 3px; flex: none;
+      & i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.4; }
+    }
+    & .w-nav { font-size: 15px; line-height: 1; letter-spacing: 3px; opacity: 0.7; flex: none; }
+    /* Left-aligned and unadorned, like the real command center. */
+    & .w-cc {
+      flex: 1; min-width: 0; text-align: left;
+      padding: 2px 6px; border-radius: 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      background: var(--cc-bg, rgba(128, 128, 128, 0.16));
+      color: var(--cc-fg, inherit);
+      border: 1px solid var(--cc-bd, rgba(128, 128, 128, 0.3));
+    }
+    & .w-panels {
+      display: flex; gap: 4px; font-size: 13px; line-height: 1; opacity: 0.75; flex: none;
+    }
+
+    & .w-body { display: flex; height: 104px; }
+    & .w-activity {
+      display: flex; flex-direction: column; align-items: center; gap: 11px;
+      padding: 9px 6px; font-size: 15px; line-height: 1; flex: none;
+      background: var(--ab-bg, var(--panel)); color: var(--ab-fg, var(--panel-fg));
+    }
+    & .w-side {
+      width: 74px; padding: 7px 6px; flex: none;
+      background: var(--sb-bg, var(--panel)); color: var(--sb-fg, var(--panel-fg));
+
+      & .w-head {
+        font-size: 8px; line-height: 11px; letter-spacing: 0.08em; opacity: 0.65;
+        margin-bottom: 3px;
+      }
+      /* Absolute, not a multiplier: rows would inherit the mock's roomy 1.5. */
+      & .w-row {
+        white-space: nowrap; opacity: 0.9; padding: 0 3px; border-radius: 3px;
+        font-size: 9px; line-height: 12px;
+
+        &.indent { padding-left: 10px; }
+        &.active { background: rgba(128, 128, 128, 0.22); }
+      }
+    }
+    & .w-editor {
+      flex: 1; min-width: 0;
+      background: var(--ed-bg, var(--edit)); color: var(--edit-fg);
+    }
+    & .w-tabs {
+      display: flex; gap: 1px; overflow: hidden; background: rgba(128, 128, 128, 0.14);
+
+      & span {
+        padding: 4px 7px; opacity: 0.6; flex: none;
+        &.on { background: var(--ed-bg, var(--edit)); opacity: 1; }
+      }
+    }
+    & .w-code {
+      padding: 8px 9px; font-family: var(--vscode-editor-font-family), monospace;
+
+      & div { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+      & .k { color: var(--key); }
+      & .s { color: var(--str); }
+      & .f { color: var(--fn); }
+      & .c { color: var(--com); }
+    }
+  }
+}
+.actions { display: flex; gap: 8px; }
+button {
+  font-family: inherit; font-size: inherit; padding: 7px 14px;
+  border: none; border-radius: 2px; cursor: pointer;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+button:hover { background: var(--vscode-button-hoverBackground); }
+button.secondary {
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+button:disabled { opacity: 0.4; cursor: default; }
+button:disabled:hover { background: var(--vscode-button-background); }

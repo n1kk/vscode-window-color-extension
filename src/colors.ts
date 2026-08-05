@@ -92,6 +92,30 @@ export function readableForeground(background: string): string {
     : DARK_TEXT;
 }
 
+/** Inverse of {@link hslToHex}. `h` in degrees, `s` and `l` as 0–1. */
+export function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  const { r, g, b } = parseHex(hex) ?? { r: 0, g: 0, b: 0 };
+  const [red, green, blue] = [r / 255, g / 255, b / 255];
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+  const l = (max + min) / 2;
+
+  if (delta === 0) {
+    return { h: 0, s: 0, l };
+  }
+  const s = delta / (1 - Math.abs(2 * l - 1));
+  let h: number;
+  if (max === red) {
+    h = ((green - blue) / delta) % 6;
+  } else if (max === green) {
+    h = (blue - red) / delta + 2;
+  } else {
+    h = (red - green) / delta + 4;
+  }
+  return { h: (h * 60 + 360) % 360, s, l };
+}
+
 /** `h` in degrees (0–360), `s` and `l` as 0–1. */
 export function hslToHex(h: number, s: number, l: number): string {
   const hue = ((h % 360) + 360) % 360;
@@ -127,10 +151,15 @@ interface Band {
   endLightness: number;
 }
 
-/** Both ends stay clear of 0 and 1, so no swatch comes out black or white. */
+/**
+ * Both bands start at their most saturated row and fade away from it, so the two
+ * tabs read the same way down the grid. Because `counterpart` maps by position
+ * within the band, that also pairs base with base and extreme with extreme.
+ * Both ends stay clear of 0 and 1, so no swatch comes out black or white.
+ */
 const SWATCH_BANDS: Record<SwatchVariant, Band> = {
   dark: { saturation: 0.45, startLightness: 0.44, endLightness: 0.08 },
-  light: { saturation: 0.45, startLightness: 0.92, endLightness: 0.52 },
+  light: { saturation: 0.45, startLightness: 0.52, endLightness: 0.92 },
 };
 
 /**
@@ -155,6 +184,39 @@ export function buildSwatchGrid(
       hslToHex((360 / hueSteps) * column, saturation, startLightness + step * row),
     ),
   );
+}
+
+/** A color for dark themes and its counterpart for light ones. */
+export interface ThemePair {
+  dark: string;
+  light: string;
+}
+
+/**
+ * Maps a color from one band to the other, keeping its hue and saturation and
+ * moving its lightness to the same relative position in the target band.
+ *
+ * For a swatch this lands exactly on the swatch at the same grid position, since
+ * the grid ramps lightness the same way. For a hand-typed color it produces the
+ * nearest equivalent, clamped so the result stays inside the target band.
+ */
+export function counterpart(hex: string, from: SwatchVariant, to: SwatchVariant): string {
+  const source = SWATCH_BANDS[from];
+  const target = SWATCH_BANDS[to];
+  const { h, s, l } = hexToHsl(hex);
+
+  const span = source.endLightness - source.startLightness;
+  const fraction = span === 0 ? 0 : Math.min(1, Math.max(0, (l - source.startLightness) / span));
+  const lightness = target.startLightness + (target.endLightness - target.startLightness) * fraction;
+
+  return hslToHex(h, s, lightness);
+}
+
+/** Expands one picked color into the dark/light pair, given the band it came from. */
+export function themePair(hex: string, variant: SwatchVariant): ThemePair {
+  const other: SwatchVariant = variant === 'dark' ? 'light' : 'dark';
+  const mapped = counterpart(hex, variant, other);
+  return variant === 'dark' ? { dark: hex, light: mapped } : { dark: mapped, light: hex };
 }
 
 function clampByte(v: number): number {

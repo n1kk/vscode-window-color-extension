@@ -18,7 +18,9 @@
   ],
   "main": "./dist/extension.js",
   "icon": "assets/icon.png",
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "commands": [
       {
@@ -31,15 +33,39 @@
         "title": "Clear Window Color",
         "category": "Window Color"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Window Color",
+      "properties": {
+        "windowColor.themeColors": {
+          "type": "object",
+          "default": null,
+          "markdownDescription": "The matched pair of colors, written by the picker. The color for the theme kind you are not currently using cannot be recovered from `#workbench.colorCustomizations#`, so it is kept here. Absent when one color is used under every theme.",
+          "properties": {
+            "dark": {
+              "type": "string",
+              "description": "Color used under dark and high-contrast themes.",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "light": {
+              "type": "string",
+              "description": "Color used under light themes.",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
     "package": "pnpm run check-types && node esbuild.js --production",
-    "check-types": "tsc --noEmit",
+    "check-types": "tsc --noEmit && tsc -p src/webview --noEmit",
     "vscode:prepublish": "pnpm run package",
-    "vsix": "vsce package --no-dependencies"
+    "vsix": "vsce package --no-dependencies",
+    "vsix:dev": "node scripts/package-dev.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

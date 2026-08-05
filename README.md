@@ -12,6 +12,8 @@ bar, status bar, editor, or any combination. The choice is saved to the project'
 
 - **Live preview.** The real window recolors as you drag the picker; closing
   without applying puts it back.
+- **Side-by-side mockups.** Miniature windows at the bottom of the picker show how
+  the dark and light halves will look, including the half you cannot currently see.
 - **Generated palette.** A 16-hue × 9-brightness grid, split into Dark and Light
   tabs so the whole grid is spent on the range you actually want.
 - **Any hex color.** Use the swatches, the system color picker, or type a hex value.
@@ -19,6 +21,8 @@ bar, status bar, editor, or any combination. The choice is saved to the project'
 - **Readable by construction.** Foreground colors are chosen for WCAG contrast
   against your color, and the editor tint is muted so syntax highlighting survives.
 - **Per project.** Written to workspace settings, so each folder keeps its own color.
+- **Dark and light in one pick.** Choosing a swatch also claims its counterpart in
+  the other tab, and the window repaints when you switch theme.
 - **Tidy.** Only the keys it wrote are touched; your own color customizations are
   left alone. **Reset** removes them.
 
@@ -62,11 +66,37 @@ strip alone and leave the explorer as your theme has it.
 own background, because a saturated editor background wrecks syntax-highlighting
 contrast. Every other part uses your color at full strength.
 
+## Dark and light themes
+
+If you switch themes through the day, one color rarely suits both — a deep red
+that reads well on a dark theme turns muddy on a light one.
+
+With **Across themes → Match dark and light** (the default), picking a swatch
+also claims its counterpart at the same position in the other tab. Choose the
+dark red from the **Dark** tab and you get the light red from the **Light** tab
+for light themes, automatically. The panel shows both, and the window repaints
+whenever you switch themes.
+
+This works by theme *kind*, not by theme name, so any dark theme gets the dark
+color and any light theme gets the light one — including themes you install
+later. High-contrast dark counts as dark.
+
+Typing a hex or using the system picker works too: the color is taken as the one
+for the tab you're on, and its counterpart is derived by moving its lightness to
+the matching position in the other band, keeping hue and saturation.
+
+Choose **Same color always** to go back to one color under every theme.
+
 ## Extension settings
 
-None. Everything lives in `workbench.colorCustomizations` in the project's
+The colors themselves live in `workbench.colorCustomizations` in the project's
 `.vscode/settings.json`, and the picker reads its state back from there — so
 hand-edits are picked up, and deleting the block resets it.
+
+One setting exists, written by the picker: `windowColor.themeColors` holds the
+matched dark/light pair. Only the half matching your current theme is ever
+present in `colorCustomizations`, so the other one has nowhere else to live. It
+is absent when you use **Same color always**.
 
 ## Requirements
 
@@ -83,6 +113,8 @@ hand-edits are picked up, and deleting the block resets it.
   avoids this.
 - Colors are written at the workspace level, so a folder with no `.vscode`
   directory will get one.
+- With matched colors, switching theme rewrites `.vscode/settings.json`. If you
+  commit that file, expect a diff when you switch. **Same color always** avoids it.
 
 ## Release notes
 

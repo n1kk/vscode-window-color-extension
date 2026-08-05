@@ -13,5 +13,7 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true
   },
-  "include": ["src"]
+  // src/webview has its own config: it needs DOM instead of Node.
+  "include": ["src"],
+  "exclude": ["src/webview"]
 }

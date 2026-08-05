@@ -2,6 +2,10 @@ const esbuild = require('esbuild');
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
+// A custom outfile keeps a build clear of the one `--watch` owns and restores.
+const outfile =
+  process.argv.find((arg) => arg.startsWith('--outfile='))?.slice('--outfile='.length) ??
+  'dist/extension.js';
 
 /** Reports build state in the format VS Code's `$esbuild-watch` problem matcher expects. */
 const problemMatcherPlugin = {
@@ -22,27 +26,50 @@ const problemMatcherPlugin = {
   },
 };
 
+const shared = {
+  bundle: true,
+  minify: production,
+  sourcemap: !production,
+  sourcesContent: false,
+  logLevel: 'silent',
+};
+
+/** Runs in the extension host: Node, with the vscode API provided at runtime. */
+const extensionBuild = {
+  ...shared,
+  entryPoints: ['src/extension.ts'],
+  format: 'cjs',
+  platform: 'node',
+  target: 'node20',
+  outfile,
+  external: ['vscode'],
+  plugins: [problemMatcherPlugin],
+};
+
+/**
+ * Runs in the webview: a browser context, loaded by media/picker.html as a plain
+ * script. Its output is generated, so it is git-ignored while the html and css
+ * beside it are sources.
+ */
+const webviewBuild = {
+  ...shared,
+  entryPoints: ['src/webview/picker.ts'],
+  format: 'iife',
+  platform: 'browser',
+  target: 'chrome122',
+  outfile: 'media/picker.js',
+};
+
 async function main() {
-  const ctx = await esbuild.context({
-    entryPoints: ['src/extension.ts'],
-    bundle: true,
-    format: 'cjs',
-    minify: production,
-    sourcemap: !production,
-    sourcesContent: false,
-    platform: 'node',
-    target: 'node20',
-    outfile: 'dist/extension.js',
-    external: ['vscode'],
-    logLevel: 'silent',
-    plugins: [problemMatcherPlugin],
-  });
+  const contexts = await Promise.all(
+    [extensionBuild, webviewBuild].map((options) => esbuild.context(options)),
+  );
 
   if (watch) {
-    await ctx.watch();
+    await Promise.all(contexts.map((ctx) => ctx.watch()));
   } else {
-    await ctx.rebuild();
-    await ctx.dispose();
+    await Promise.all(contexts.map((ctx) => ctx.rebuild()));
+    await Promise.all(contexts.map((ctx) => ctx.dispose()));
   }
 }
 

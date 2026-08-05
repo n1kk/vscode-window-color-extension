@@ -3,6 +3,7 @@
 .gitignore
 DEVELOPMENT.md
 src/**
+scripts/**
 node_modules/**
 esbuild.js
 tsconfig.json
