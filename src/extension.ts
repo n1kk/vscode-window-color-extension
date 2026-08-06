@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { showPicker } from './picker';
+import { registerStatusBar } from './statusBar';
 import {
   applyColor,
   hasWorkspace,
@@ -16,6 +17,8 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.window.onDidChangeActiveColorTheme(() => void syncToActiveTheme()),
   );
+
+  registerStatusBar(context);
 
   context.subscriptions.push(
     vscode.commands.registerCommand('windowColor.pick', async () => {

@@ -14,7 +14,8 @@ export interface PreviewColors {
 
 /** Everything the page needs to render itself, serialised into the HTML. */
 export interface PickerState {
-  color: string;
+  /** The applied color, or null when the project has none yet. */
+  color: string | null;
   mode: "full" | "parts";
   targets: readonly Target[];
   allTargets: { value: Target; label: string }[];
@@ -27,23 +28,20 @@ export interface PickerState {
   hueSteps: number;
 }
 
+/**
+ * The panel edits live — every change is written straight to settings, so there
+ * is no apply step and nothing to roll back.
+ */
 export type FromWebview =
   | {
-      type: "preview";
+      type: "change";
       color: string;
       targets: unknown;
       variant: string;
       matched: boolean;
     }
-  | {
-      type: "apply";
-      color: string;
-      targets: unknown;
-      variant: string;
-      matched: boolean;
-    }
-  | { type: "reset" }
-  | { type: "cancel" };
+  | { type: "clear" }
+  | { type: "close" };
 
 export type ToWebview =
   /** Sent back so the panel can show what each theme kind will get. */

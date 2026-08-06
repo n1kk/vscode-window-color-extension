@@ -32,8 +32,21 @@
         "command": "windowColor.clear",
         "title": "Clear Window Color",
         "category": "Window Color"
+      },
+      {
+        "command": "windowColor.setColor",
+        "title": "Set Window Color to a Given Hex",
+        "category": "Window Color"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "windowColor.setColor",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "Window Color",
       "properties": {

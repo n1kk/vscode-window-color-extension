@@ -21,6 +21,9 @@ p.hint { margin: 0 0 20px; color: var(--vscode-descriptionForeground); }
   color: var(--vscode-foreground);
   border-bottom-color: var(--vscode-focusBorder);
 }
+.tab:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+/* Ordered rather than placed last, so the tabs can be appended after it. */
+.tab.clear { order: 1; margin-left: auto; }
 /*
  * The backdrop matches the band, not the editor theme: dark swatches all read
  * as black against a light page, and light ones wash out against a dark one.
@@ -177,19 +180,5 @@ legend { padding: 0 0 8px; font-weight: 600; }
     }
   }
 }
-.actions { display: flex; gap: 8px; }
-button {
-  font-family: inherit; font-size: inherit; padding: 7px 14px;
-  border: none; border-radius: 2px; cursor: pointer;
-  color: var(--vscode-button-foreground);
-  background: var(--vscode-button-background);
-}
-button:hover { background: var(--vscode-button-hoverBackground); }
-button.secondary {
-  color: var(--vscode-button-secondaryForeground);
-  background: var(--vscode-button-secondaryBackground);
-}
-button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
-button:disabled { opacity: 0.4; cursor: default; }
-button:disabled:hover { background: var(--vscode-button-background); }
+/* No Apply or Cancel: the page writes as you go, so the only button is Clear. */
+button { font: inherit; cursor: pointer; }

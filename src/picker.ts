@@ -25,16 +25,16 @@ import {
   Target,
   TARGETS,
   toTargets,
-  withColor,
-  writeCustomizations,
 } from "./windowColor";
 
 const VIEW_TYPE = "windowColor.picker";
-const DEFAULT_COLOR = "#3b6ea5";
+
+/** Nothing tinted: every mock falls back to its own theme's stand-in colors. */
+const NO_PREVIEW: PreviewColors = { dark: {}, light: {} };
 
 /** Swatch grid dimensions: hues across, brightness rows down. */
-const HUE_STEPS = 16;
-const BRIGHTNESS_ROWS = 9;
+export const HUE_STEPS = 16;
+export const BRIGHTNESS_ROWS = 9;
 
 const VARIANT_LABELS: Record<SwatchVariant, string> = {
   dark: "Dark",
@@ -80,13 +80,10 @@ export async function showPicker(extensionUri: vscode.Uri): Promise<void> {
     return;
   }
 
-  // Snapshot up front. Every preview and the final apply are computed from this,
-  // so nothing accumulates across previews and cancelling is just writing it back.
-  const snapshot = readCustomizations();
+  const settings = readCustomizations();
   const storedPair = readPair();
-  const original = currentColor(snapshot);
-  const originalTargets = currentTargets(snapshot);
-  let committed = false;
+  const applied = currentColor(settings);
+  const appliedTargets = currentTargets(settings);
 
   /**
    * The pair a picked color implies, and the half to show right now. Without
@@ -109,14 +106,15 @@ export async function showPicker(extensionUri: vscode.Uri): Promise<void> {
     },
   );
   openPanel = panel;
-  const startColor = original ?? DEFAULT_COLOR;
   panel.webview.html = await renderHtml(panel.webview, extensionUri, {
-    color: startColor,
-    targets: originalTargets,
+    color: applied ?? null,
+    targets: appliedTargets,
     variant: defaultVariant(),
     matched: storedPair !== undefined,
     pair: storedPair,
-    preview: previewColors(startColor, storedPair, originalTargets),
+    preview: applied
+      ? previewColors(applied, storedPair, appliedTargets)
+      : NO_PREVIEW,
   });
 
   const post = (message: ToWebview) => panel.webview.postMessage(message);
@@ -136,64 +134,43 @@ export async function showPicker(extensionUri: vscode.Uri): Promise<void> {
 
   panel.webview.onDidReceiveMessage(async (message: FromWebview) => {
     switch (message.type) {
-      case "preview": {
+      // Written straight through: the panel has no apply step, so each change
+      // is the final state. `applyColor` clears its own keys first, so repeated
+      // changes replace rather than accumulate.
+      case "change": {
         const color = normalizeHex(message.color);
-        if (color) {
-          const targets = toTargets(message.targets) ?? [];
-          const { pair, visible } = resolve(
-            color,
-            toVariant(message.variant),
-            message.matched,
-          );
-          await writeCustomizations(withColor(snapshot, visible, targets));
-          post({
-            type: "pair",
-            pair,
-            preview: previewColors(visible, pair, targets),
-          });
-        }
-        break;
-      }
-      case "apply": {
-        const color = normalizeHex(message.color);
-        const targets = toTargets(message.targets);
-        if (!color || !targets?.length) {
+        if (!color) {
           return;
         }
+        const targets = toTargets(message.targets) ?? [];
         const { pair, visible } = resolve(
           color,
           toVariant(message.variant),
           message.matched,
         );
-        committed = true;
         await applyColor(visible, targets, pair);
-        panel.dispose();
-        const summary = pair ? `${pair.dark} / ${pair.light}` : visible;
-        vscode.window.setStatusBarMessage(
-          `Window color set to ${summary}`,
-          3000,
-        );
+        post({
+          type: "pair",
+          pair,
+          preview: previewColors(visible, pair, targets),
+        });
         break;
       }
-      case "reset": {
-        committed = true;
+      case "clear": {
         await applyColor(undefined);
-        panel.dispose();
+        post({ type: "pair", pair: undefined, preview: NO_PREVIEW });
         vscode.window.setStatusBarMessage("Window color cleared", 3000);
         break;
       }
-      case "cancel":
+      case "close":
         panel.dispose();
         break;
     }
   });
 
-  panel.onDidDispose(async () => {
+  panel.onDidDispose(() => {
     openPanel = undefined;
     themeListener.dispose();
-    if (!committed) {
-      await writeCustomizations(snapshot);
-    }
   });
 }
 
@@ -204,12 +181,12 @@ function toVariant(value: string): SwatchVariant {
 }
 
 /** Which swatch band to open on, matching the tone of the active theme. */
-function defaultVariant(): SwatchVariant {
+export function defaultVariant(): SwatchVariant {
   return isDarkTheme() ? "dark" : "light";
 }
 
 interface RenderOptions {
-  color: string;
+  color: string | null;
   targets: readonly Target[];
   variant: SwatchVariant;
   matched: boolean;

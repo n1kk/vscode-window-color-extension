@@ -212,6 +212,19 @@ export function counterpart(hex: string, from: SwatchVariant, to: SwatchVariant)
   return hslToHex(h, s, lightness);
 }
 
+/**
+ * Which grid row a color sits closest to within a band, by lightness. Lets a
+ * shortlist of hues be offered at the brightness already in use, instead of
+ * asking which row to show.
+ */
+export function rowForColor(hex: string, variant: SwatchVariant, rows: number): number {
+  const { startLightness, endLightness } = SWATCH_BANDS[variant];
+  const { l } = hexToHsl(hex);
+  const span = endLightness - startLightness;
+  const fraction = span === 0 ? 0 : (l - startLightness) / span;
+  return Math.min(rows - 1, Math.max(0, Math.round(fraction * (rows - 1))));
+}
+
 /** Expands one picked color into the dark/light pair, given the band it came from. */
 export function themePair(hex: string, variant: SwatchVariant): ThemePair {
   const other: SwatchVariant = variant === 'dark' ? 'light' : 'dark';

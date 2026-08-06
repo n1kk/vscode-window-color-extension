@@ -29,8 +29,11 @@ const pairNote = byId("pairNote");
 const parts = byId("parts");
 const sync = byId<HTMLInputElement>("sync");
 
-/** The chosen color. The swatches are the only way to set it, so it lives here. */
-let selected = STATE.color;
+/**
+ * The chosen color, or null when the project has none. The swatches are the only
+ * way to set it, so it lives here rather than in an input's value.
+ */
+let selected: string | null = STATE.color;
 
 // ---------------------------------------------------------------- build the DOM
 
@@ -46,7 +49,8 @@ for (const { value, label } of STATE.variants) {
   button.textContent = label;
   byId("tabs").appendChild(button);
 }
-const tabs = [...document.querySelectorAll<HTMLButtonElement>(".tab")];
+// Clear shares the row and the .tab look, so match on the data attribute only.
+const tabs = [...document.querySelectorAll<HTMLButtonElement>(".tab[data-variant]")];
 
 for (const { value, label } of STATE.allTargets) {
   const wrapper = document.createElement("label");
@@ -187,7 +191,7 @@ function switchVariant(next: SwatchVariant, carry: boolean): void {
   if (mapped) {
     select(mapped);
   } else {
-    preview(current());
+    commit();
   }
 }
 
@@ -208,15 +212,26 @@ const mode = () =>
   document.querySelector<HTMLInputElement>('input[name="mode"]:checked')!.value;
 const matched = () => sync.checked;
 const targets = () => boxes.filter((box) => box.checked).map((box) => box.value);
-const current = () => selected;
-const preview = (color: string) =>
+const current = () => selected ?? "";
+
+/**
+ * Writes the current state through. There is no apply step, so this runs on
+ * every change — and does nothing until a color has been chosen, so toggling
+ * options after a Clear does not quietly bring the old color back.
+ */
+function commit(): void {
+  if (selected === null) {
+    return;
+  }
   vscode.postMessage({
-    type: "preview",
-    color,
+    type: "change",
+    color: selected,
     targets: targets(),
     variant: activeVariant,
     matched: matched(),
   });
+}
+
 
 window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
   const message = event.data;
@@ -232,19 +247,10 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
 function select(color: string): void {
   selected = color;
   markSelected(color);
-  preview(color);
+  commit();
 }
 
 // --------------------------------------------------------------------- controls
-
-const applyButton = byId<HTMLButtonElement>("apply");
-const cancelButton = byId<HTMLButtonElement>("cancel");
-const resetButton = byId<HTMLButtonElement>("reset");
-
-/** With nothing ticked there is nothing to write, so Apply would be a no-op. */
-function syncApplyState(): void {
-  applyButton.disabled = targets().length === 0;
-}
 
 /** Remembers the part selection while "Full window" overrides the boxes. */
 let rememberedParts = targets();
@@ -259,50 +265,34 @@ function syncMode(): void {
     box.checked = full || rememberedParts.includes(box.value);
   }
   parts.classList.toggle("inactive", full);
-  syncApplyState();
 }
 
 for (const radio of document.querySelectorAll('input[name="mode"]')) {
   radio.addEventListener("change", () => {
     syncMode();
-    preview(current());
+    commit();
   });
 }
 
 for (const box of boxes) {
   box.addEventListener("change", () => {
     rememberedParts = targets();
-    syncApplyState();
-    preview(current());
+    commit();
   });
 }
 
-sync.addEventListener("change", () => preview(current()));
+sync.addEventListener("change", commit);
 
-function apply(): void {
-  if (!applyButton.disabled) {
-    vscode.postMessage({
-      type: "apply",
-      color: current(),
-      targets: targets(),
-      variant: activeVariant,
-      matched: matched(),
-    });
-  }
-}
-
-applyButton.addEventListener("click", apply);
-cancelButton.addEventListener("click", () => vscode.postMessage({ type: "cancel" }));
-resetButton.addEventListener("click", () => vscode.postMessage({ type: "reset" }));
+byId<HTMLButtonElement>("clear").addEventListener("click", () => {
+  // Drop the selection too, so a later toggle does not resurrect the old color.
+  selected = null;
+  markSelected("");
+  vscode.postMessage({ type: "clear" });
+});
 
 document.addEventListener("keydown", (event) => {
-  // Buttons handle Enter themselves. Intercepting it here would fire before the
-  // resulting click, so a swatch would apply the previously selected color.
-  const onButton = (event.target as HTMLElement | null)?.tagName === "BUTTON";
-  if (event.key === "Enter" && !onButton) {
-    apply();
-  } else if (event.key === "Escape") {
-    vscode.postMessage({ type: "cancel" });
+  if (event.key === "Escape") {
+    vscode.postMessage({ type: "close" });
   }
 });
 
