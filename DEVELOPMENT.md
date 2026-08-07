@@ -11,10 +11,8 @@ pnpm run vsix:dev      # .vsix installable next to the published extension
 <kbd>F5</kbd> launches an Extension Development Host. Open a folder in it, or the
 commands refuse to run.
 
-> **Stop the watch task before packaging.** esbuild's watch owns
-> `dist/extension.js` and restores it whenever it changes — including right after
-> a production build — so a release built while watch runs can ship the dev
-> bundle.
+Packaging is safe with watch running — see [Packaging](#packaging) for why that
+took effort.
 
 ## Layout
 
@@ -23,11 +21,11 @@ the webview (IIFE, browser). They have separate `tsconfig.json` files because th
 webview needs `DOM` and must not see Node or the `vscode` API; `check-types` runs
 `tsc` twice for that reason.
 
-| File                    | |
-| ----------------------- | --- |
-| `media/picker.html`     | Source. Static, with `{{nonce}}`-style placeholders |
-| `media/picker.css`      | Source |
-| `src/webview/picker.ts` | Source. Builds the DOM from the injected state |
+| File                    |                                                                            |
+| ----------------------- | -------------------------------------------------------------------------- |
+| `media/picker.html`     | Source. Static, with `{{nonce}}`-style placeholders                        |
+| `media/picker.css`      | Source                                                                     |
+| `src/webview/picker.ts` | Source. Builds the DOM from the injected state                             |
 | `media/picker.js`       | **Generated**; git-ignored, but must stay in `.vscodeignore`'s shipped set |
 
 `src/shared.ts` holds the types crossing the boundary. Both sides use
@@ -158,17 +156,36 @@ lightness. Rebuilt on theme change and on `colorCustomizations` changing.
 `code --install-extension <file>.vsix`. Reinstalling the same version needs
 `--force`.
 
+Both `vsix` and `vsix:dev` go through `scripts/package.js` rather than calling
+`vsce` directly, because **`pnpm run watch` owns `dist/extension.js` and restores
+it whenever anything else writes there** — including a production build, moments
+before `vsce` reads it. Packaging with watch running would ship the unminified
+dev bundle.
+
+Rather than requiring the task to be stopped, the script sidesteps the file:
+
+1. Builds to `dist/extension.pkg.js` (or `.dev.js`), which watch does not own.
+2. Points `main` at it and drops `vscode:prepublish`, which would rebuild to the
+   watched path.
+3. Adds `dist/extension.js` to `.vscodeignore` so the watched copy stays out.
+4. Restores `package.json` and `.vscodeignore` in a `finally`.
+
 `--no-dependencies` is passed because pnpm's symlinked `node_modules` confuses
 `vsce`'s dependency walk; safe here since esbuild bundles everything and there
 are no runtime dependencies.
 
+Two things this does **not** cover:
+
+- `media/picker.js` is also watch-owned, so with watch running the packaged copy
+  may be unminified. Same code, ~3 KB larger.
+- `vsce publish` on its own still runs `vscode:prepublish` into the watched path.
+  Publish the built file instead: `vsce publish --packagePath <file>.vsix`, which
+  is what the script prints when it finishes.
+
 ### Dev build alongside the published one
 
-`scripts/package-dev.js` rewrites the `windowColor.` prefix in both manifest and
-bundle, builds to `dist/extension.dev.js` so watch can't clobber it, and restores
-`package.json` / `.vscodeignore` in a `finally`.
-
-Renaming the command ids is not cosmetic: **VS Code throws when two extensions
+`pnpm run vsix:dev` additionally rewrites the `windowColor.` prefix in both
+manifest and bundle. That is not cosmetic: **VS Code throws when two extensions
 register the same command id**, so a dev build keeping them fails to activate
 whenever the published one is installed. Both builds still write the same
 `colorCustomizations` keys, so run one at a time.
@@ -193,17 +210,6 @@ ffmpeg -i assets/preview.mov \
   -vf "fps=12,scale=900:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" \
   -loop 0 -y assets/preview.gif
 ```
-
-The `palettegen` / `paletteuse` pair is the point: GIF allows 256 colors, and
-without a palette built from this footage ffmpeg picks a generic one that bands
-the gradients badly. `bayer` suits flat UI and compresses better than the
-error-diffusion default.
-
-The GIF ships in the `.vsix` and is most of the download; `vsce` warns past 1 MB.
-Knobs by effect: `fps` (linear), `scale` (quadratic), `max_colors` (64 is usually
-indistinguishable). For reference, a 2908×1902 / 120 fps / 26 s recording gives
-~1.5 MB above, ~940 KB at `fps=10,scale=760,max_colors=64`. Trimming with
-`-ss` / `-t` beats all three.
 
 ## Publishing
 

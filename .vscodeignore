@@ -10,6 +10,8 @@ tsconfig.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
 *.vsix
+# Source recording for assets/preview.gif — never ships.
+**/*.mov
 **/*.map
 **/*.ts
 **/*.local
