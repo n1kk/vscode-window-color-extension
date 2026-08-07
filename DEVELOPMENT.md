@@ -2,291 +2,221 @@
 
 ```sh
 pnpm install
-pnpm run watch     # esbuild in watch mode
+pnpm run watch         # esbuild, both bundles
+pnpm run check-types   # tsc over the extension and the webview separately
+pnpm run vsix          # installable .vsix
+pnpm run vsix:dev      # .vsix installable next to the published extension
 ```
 
-Then press <kbd>F5</kbd> ("Run Extension") to launch an Extension Development Host,
-open a folder in it, and run **Set Window Color…** from the command palette.
+<kbd>F5</kbd> launches an Extension Development Host. Open a folder in it, or the
+commands refuse to run.
 
-Other scripts:
+> **Stop the watch task before packaging.** esbuild's watch owns
+> `dist/extension.js` and restores it whenever it changes — including right after
+> a production build — so a release built while watch runs can ship the dev
+> bundle.
 
-```sh
-pnpm run check-types   # tsc --noEmit
-pnpm run package       # type-check + production bundle into dist/
-pnpm run vsix          # build the installable .vsix
-pnpm run vsix:dev      # same, but installable next to the published extension
+## Layout
+
+`esbuild.js` builds two bundles: the extension (CJS, Node, `vscode` external) and
+the webview (IIFE, browser). They have separate `tsconfig.json` files because the
+webview needs `DOM` and must not see Node or the `vscode` API; `check-types` runs
+`tsc` twice for that reason.
+
+| File                    | |
+| ----------------------- | --- |
+| `media/picker.html`     | Source. Static, with `{{nonce}}`-style placeholders |
+| `media/picker.css`      | Source |
+| `src/webview/picker.ts` | Source. Builds the DOM from the injected state |
+| `media/picker.js`       | **Generated**; git-ignored, but must stay in `.vscodeignore`'s shipped set |
+
+`src/shared.ts` holds the types crossing the boundary. Both sides use
+`import type`, so it never reaches either bundle at runtime.
+
+Editing the html or css needs no rebuild, only reopening the panel — they are
+read each time. The webview `.ts` needs the watch rebuild.
+
+## Webview gotchas
+
+- **`renderHtml` substitutes five placeholders** — nonce, `cspSource`, two asset
+  URLs, and the `state` blob. `<` is escaped in that JSON so a value cannot close
+  the surrounding script tag.
+- **Mock-window classes are prefixed `w-`.** The page and the mock both want
+  `row`, `head`, `tabs`; a shared name lets page rules apply inside the mock —
+  a page-level `.row` once leaked its `margin-bottom` into the file tree.
+- **No `unsafe-inline` in the CSP, deliberately.** Styles set through the CSSOM
+  (`el.style.setProperty`) aren't covered by `style-src`, so swatch colors and the
+  mock's custom properties work without loosening it.
+- `localResourceRoots` is limited to `media/`.
+
+## Colors
+
+Everything lands in `workbench.colorCustomizations` at workspace level. Each
+selected part contributes a block: background is the picked color, foreground is
+whichever of white / near-black has better WCAG contrast, borders and hover
+states are mixed a little toward the foreground.
+
+`MANAGED_KEYS` (what a clear removes) and `KEYS_BY_TARGET` (how the panel infers
+which parts are colored) are both derived from `buildCustomizations` itself, so
+they can't drift from it. **There is no setting storing the selection** — the
+written colors are the only state.
+
+`withColor` is pure and strips this extension's keys before adding new ones,
+which is what lets the panel write on every change without accumulating.
+
+### The panel writes as you go
+
+No apply step: every click sends `change`, which goes straight to `applyColor`.
+No snapshot, no rollback; `Esc` just closes.
+
+Two consequences that look like bugs but aren't:
+
+- `clear` sets the webview's `selected` to `null` and `commit()` no-ops while it
+  is null — otherwise toggling anything afterwards would write the cleared color
+  back.
+- Unticking every part sends empty `targets` and writes no keys, i.e. the same
+  end state as clearing.
+
+## Dark/light pairs
+
+`colorCustomizations` can scope a block by theme **name**, but not by theme
+_kind_, so kind-matching has to be done by the extension:
+
+- `themePair(hex, variant)` expands one color into `{ dark, light }` via
+  `counterpart()`, which keeps hue and saturation and moves lightness to the same
+  relative position in the other band.
+- The pair lives in `windowColor.themeColors` because only the half matching the
+  current theme is ever written to `colorCustomizations` — **the other half has
+  nowhere else to be recovered from.**
+- `syncToActiveTheme()` repaints on theme change and once at activation (the
+  theme may have changed while the window was closed). The extension activates
+  `onStartupFinished` so that listener actually exists.
+
+The **Adaptive** checkbox defaults on, decided by `isAdaptive()`:
+
+```ts
+readPair() !== undefined || currentColor(colors) === undefined;
 ```
 
-> **Stop the watch task before packaging.** esbuild's watch mode owns
-> `dist/extension.js` and rewrites it — in dev mode, unminified — whenever it
-> changes, including right after a production build. A release packaged while
-> watch is running can end up with the wrong bundle.
-
-### Colors written
-
-Everything lands under `workbench.colorCustomizations` at the workspace level.
-Given a picked color `C`, `F` is whichever of white / near-black has the better
-WCAG contrast against `C`. Each selected part contributes its own block of keys;
-the title bar block is:
-
-| Key                                | Value                         |
-| ---------------------------------- | ----------------------------- |
-| `titleBar.activeBackground`        | `C`                           |
-| `titleBar.activeForeground`        | `F`                           |
-| `titleBar.inactiveBackground`      | `C` mixed 30% toward mid gray |
-| `titleBar.inactiveForeground`      | `F` at 60% alpha              |
-| `titleBar.border`                  | `C` mixed 20% toward `F`      |
-| `commandCenter.background`         | `C` mixed 10% toward `F`      |
-| `commandCenter.foreground`         | `F`                           |
-| `commandCenter.border`             | `C` mixed 25% toward `F`      |
-| `commandCenter.activeBackground`   | `C` mixed 20% toward `F`      |
-| `commandCenter.activeForeground`   | `F`                           |
-| `commandCenter.activeBorder`       | `C` mixed 40% toward `F`      |
-| `commandCenter.inactiveForeground` | `F` at 70% alpha              |
-| `commandCenter.inactiveBorder`     | `C` mixed 15% toward `F`      |
-
-The other parts follow the same pattern — background `C`, foreground `F`, borders
-and hover states mixed a little toward `F`.
-
-Two things are derived from `buildCustomizations` itself rather than maintained
-by hand, so they can't drift from it: `MANAGED_KEYS` (what a clear removes) and
-`KEYS_BY_TARGET` (how the picker infers which parts are currently colored).
-There is no setting storing the selection — the written colors are the only state.
-
-`withColor(base, hex, targets)` is a **pure** function returning the new color
-map. That is what makes the live preview safe: the picker snapshots
-`colorCustomizations` when it opens and computes every preview from that
-snapshot, so nothing accumulates across previews and cancelling is just writing
-the snapshot back.
-
-### Matched dark/light colors
-
-`workbench.colorCustomizations` can scope a block to a theme by **name**
-(`"[Default Dark Modern]"`), but not to a theme *kind*. Matching by kind
-therefore can't be expressed in settings alone, and is done by the extension:
-
-- `themePair(hex, variant)` expands one color into `{ dark, light }`.
-  `counterpart()` does the work — it keeps hue and saturation and moves lightness
-  to the same relative position in the other band. Since the grid ramps lightness
-  the same way, a swatch maps exactly onto the swatch at the same grid position;
-  a hand-typed color gets the nearest equivalent, clamped into the target band.
-- The pair is stored in `windowColor.themeColors`, because only the half matching
-  the current theme is ever written to `colorCustomizations` — the other half has
-  nowhere to be recovered from.
-- `syncToActiveTheme()` repaints on `onDidChangeActiveColorTheme`, and once at
-  activation in case the theme changed while the window was closed. It returns
-  early when no pair is stored, so single-color setups are never rewritten. The
-  extension activates `onStartupFinished` so the listener is actually registered.
-
-The webview maps a tab switch by index lookup in the embedded grids rather than
-recomputing the color, so the highlighted position stays put.
-
-### The webview
-
-The panel's markup, styles and behaviour are real files rather than template
-literals:
-
-| File                    | Notes                                                       |
-| ----------------------- | ----------------------------------------------------------- |
-| `media/picker.html`     | Source. Static skeleton with `{{nonce}}`-style placeholders  |
-| `media/picker.css`      | Source. Plain stylesheet, linked through `asWebviewUri`      |
-| `src/webview/picker.ts` | Source. Builds the DOM from the injected state               |
-| `media/picker.js`       | **Generated** from the above by esbuild; git-ignored         |
-
-`esbuild.js` produces two bundles: the extension (CJS, Node, `vscode` external)
-and the webview (IIFE, browser). Both are type-checked, but under separate
-`tsconfig.json` files — the webview needs `DOM` and must not see Node or the
-`vscode` API, so `src/webview` is excluded from the root config and
-`pnpm run check-types` runs `tsc` twice.
-
-`src/shared.ts` holds the types crossing the boundary — `PickerState` and the two
-message unions. Both sides import them with `import type`, so nothing from it
-reaches either bundle at runtime; it exists to keep the two ends of `postMessage`
-from drifting apart.
-
-`renderHtml` reads the HTML, then substitutes exactly five values: the nonce, the
-webview's `cspSource`, the two asset URLs, and a JSON `state` blob. Anything that
-varies per session travels in that blob (`PickerState`), so nothing else in the
-page needs generating. `<` is escaped in the JSON so a value cannot close the
-surrounding script tag.
-
-Editing `picker.html` or `picker.css` needs no rebuild — only reopening the
-panel, since they are read each time it opens. Editing `src/webview/picker.ts`
-needs the usual watch rebuild first. `localResourceRoots` is limited to `media/`,
-and `.vscodeignore` must keep shipping it.
-
-Two conventions worth keeping:
-
-- Classes inside the mock window are prefixed `w-`. The page and the mock both
-  want names like `row`, `head` and `tabs`, and a collision means page rules
-  apply inside the mock — that is how `.row`'s `margin-bottom` once leaked into
-  the file tree. The nested `.previews` block and its blanket margin reset are
-  the second line of defence.
-- The CSP has no `unsafe-inline`. Setting styles through the CSSOM
-  (`el.style.setProperty`) is not covered by `style-src`, so the swatch colors and
-  the mock's custom properties keep working without loosening it.
-
-### Legacy per-theme blocks
-
-A pre-release version scoped colors with `"[Theme Name]": { … }` blocks instead
-of the current dark/light pair. VS Code applies such a block **over** the plain
-keys whenever that theme is active, so one left in a user's `settings.json`
-silently overrides every color picked afterwards — the colors appear to change in
-the file while the window keeps showing the stale one.
-
-Two things clear them, and both keep any customizations the user put in a block
-themselves:
-
-- `migrateLegacyThemeBlocks()` on activation, so an upgrade fixes itself before
-  anything reads the colors.
-- `withColor` on every write, so a block added later cannot take hold.
-
-The activation pass matters on its own: without it the stale block would survive
-until the user applied a color, and cancelling the picker would restore it.
+A stored pair means it was on; a project with no color yet hasn't said otherwise.
+Only a color written _without_ a pair is an explicit opt-out — exactly what
+unticking and picking leaves behind. Both the panel and the status bar use it.
 
 ### Swatch grid
 
-The presets are generated, not hard-coded. `buildSwatchGrid` walks the color
-wheel for the columns and ramps the rows evenly from a start lightness to an end
-lightness:
-
-```ts
-buildSwatchGrid(hueSteps, rows, variant);
-```
-
-`variant` picks the band to ramp through, so the whole grid is spent on one band
-rather than straddling both:
+`buildSwatchGrid(hueSteps, rows, variant)` walks the wheel for columns and ramps
+lightness for rows, within one band:
 
 | Variant | Top row | Bottom row |
 | ------- | ------- | ---------- |
 | `dark`  | 0.44    | 0.08       |
 | `light` | 0.52    | 0.92       |
 
-Both bands start at their most saturated row and fade away from it, so the tabs
-read the same way down the grid. Because `counterpart` maps by position within
-the band, that also pairs base with base and extreme with extreme. Neither end
-touches 0 or 1, so no swatch comes out black or white. Saturation and
-both lightness ends live in `SWATCH_BANDS`. Grid dimensions are `HUE_STEPS` /
-`BRIGHTNESS_ROWS` at the top of [src/picker.ts](src/picker.ts) — currently 16 × 9.
-The CSS column count follows `HUE_STEPS` automatically.
+Both bands **start at their most saturated row** and fade downward. Since
+`counterpart` maps by position within the band, that also pairs base with base
+and extreme with extreme — reversing one band silently pairs a vivid color with a
+near-white one. Neither end reaches 0 or 1, so nothing comes out black or white.
+Values live in `SWATCH_BANDS`; dimensions are `HUE_STEPS` / `BRIGHTNESS_ROWS` in
+[src/picker.ts](src/picker.ts), and the CSS column count follows `HUE_STEPS`.
 
-The picker builds both grids up front and switches between them client-side. The
-band follows the active theme: it opens on the matching one, and an
-`onDidChangeActiveColorTheme` subscription posts a `variant` message so the tabs
-keep up while the panel is open. Only a change of theme *kind* is posted, so
-swapping between two dark themes leaves a band the user picked by hand alone.
+The band follows the active theme, but only a change of theme _kind_ is posted,
+so swapping between two dark themes leaves a hand-picked band alone.
 
-Switching bands carries the selection to the swatch at the same grid position, so
-the counterpart shade is shown rather than the old color reinterpreted. That is
-skipped when a theme change arrives with matching off, since the single chosen
-color is then meant to stay exactly as it is.
+## Legacy per-theme blocks
 
-## Dev build alongside the published one
+A pre-release version scoped colors as `"[Theme Name]": { … }`. VS Code applies
+such a block **over** the plain keys, so a leftover one silently overrides every
+color picked afterwards — settings appear to change while the window doesn't.
 
-```sh
-pnpm run vsix:dev
-code --install-extension window-color-dev-<version>.vsix --force
-```
+`migrateLegacyThemeBlocks()` clears them at activation, and `withColor` on every
+write. Both keep whatever the user put in a block themselves. The activation pass
+is the one that matters: without it a stale block survives until the user happens
+to pick a color.
 
-`scripts/package-dev.js` produces the same build under a separate identity, so it
-can be installed without uninstalling the real extension:
+## Status bar hover
 
-| | Published | Dev |
-| --- | --- | --- |
-| id | `window-color` | `window-color-dev` |
-| Display name | Unique Window Colors | Unique Window Colors `[DEV]` |
-| Commands | `windowColor.*` | `windowColorDev.*` |
-| Setting | `windowColor.themeColors` | `windowColorDev.themeColors` |
+Hover opens swatches, click opens the panel — because it has to. A click can only
+run a command, and **the hover tooltip is the only popover an extension can
+anchor to the status bar**; there is no `showHover` equivalent anywhere in the
+API.
 
-Renaming the commands is not cosmetic: VS Code throws when two extensions
-register the same command id, so a dev build that kept them would fail to
-activate whenever the published one is installed. Renaming the setting also keeps
-the two builds from fighting over the same stored color pair.
+The tooltip is a `MarkdownString` with `supportHtml`:
 
-The script rewrites the `windowColor.` prefix in both the manifest and the
-bundle, builds to `dist/extension.dev.js` so `pnpm run watch` cannot clobber it,
-and restores `package.json` and `.vscodeignore` in a `finally` block.
+- No scripts, so each swatch is a `command:` link carrying the hex as a
+  URI-encoded JSON argument.
+- `isTrusted` lists enabled commands rather than trusting the string wholesale.
+- The sanitizer **does** allow `style`, so `background-color` renders — that is
+  what makes real swatches possible. It cannot draw a border, which is why the
+  current color is marked with a tick _inside_ the block.
 
-Both builds contribute the same colors to the same `workbench.colorCustomizations`
-keys, so run only one of them at a time to avoid confusing results.
+Only one row fits, so `rowForColor()` picks the row nearest the applied color's
+lightness. Rebuilt on theme change and on `colorCustomizations` changing.
 
-## Build and install locally
+## Packaging
 
-```sh
-pnpm install
-pnpm run vsix
-```
+`pnpm run vsix` → `window-color-<version>.vsix`, then
+`code --install-extension <file>.vsix`. Reinstalling the same version needs
+`--force`.
 
-That runs the `vscode:prepublish` hook (type-check + production bundle) and writes
-`window-color-<version>.vsix` in the project root. Install it either way:
+`--no-dependencies` is passed because pnpm's symlinked `node_modules` confuses
+`vsce`'s dependency walk; safe here since esbuild bundles everything and there
+are no runtime dependencies.
 
-```sh
-code --install-extension window-color-0.0.1.vsix
-```
+### Dev build alongside the published one
 
-…or from the UI: **Extensions** view → **⋯** menu → **Install from VSIX…**.
+`scripts/package-dev.js` rewrites the `windowColor.` prefix in both manifest and
+bundle, builds to `dist/extension.dev.js` so watch can't clobber it, and restores
+`package.json` / `.vscodeignore` in a `finally`.
 
-Then reload the window (**Developer: Reload Window**) and run
-**Set Window Color…** from the command palette.
-
-Notes:
-
-- If `code` isn't on your `PATH`, run **Shell Command: Install 'code' command in PATH**
-  from the command palette first.
-- Reinstalling the _same_ version is a no-op unless you pass `--force`. During
-  iteration it's easier to bump `version` in [package.json](package.json) or just
-  use <kbd>F5</kbd>.
-- To remove it: `code --uninstall-extension local.window-color`. That identifier is
-  `<publisher>.<name>` from [package.json](package.json).
-
-### Why that `vsce` flag
-
-`pnpm run vsix` is `vsce package --no-dependencies`. pnpm's symlinked
-`node_modules` confuses `vsce`'s dependency walk; skipping it is safe here
-because esbuild bundles everything into `dist/extension.js` and there are no
-runtime dependencies.
+Renaming the command ids is not cosmetic: **VS Code throws when two extensions
+register the same command id**, so a dev build keeping them fails to activate
+whenever the published one is installed. Both builds still write the same
+`colorCustomizations` keys, so run one at a time.
 
 ### README images
 
 The Marketplace renders the README on its own domain and does **not** serve files
-out of the `.vsix`, so a relative path like `assets/preview.gif` resolves to
-nothing there. `vsce` handles this by rewriting relative links against the
-`repository` field at package time:
+from the `.vsix`. `vsce` rewrites relative links against the `repository` field:
 
 ```
-assets/preview.gif
-  → https://github.com/n1kk/vscode-window-color-extension/raw/HEAD/assets/preview.gif
+assets/preview.gif → https://github.com/n1kk/…/raw/HEAD/assets/preview.gif
 ```
 
-So images must be **committed and pushed** to the default branch of a public repo
-before publishing — the Marketplace fetches them from GitHub, not from the package.
+So images must be **committed and pushed** before publishing. Never pass
+`--no-rewrite-relative-links` — it ships raw relative paths that break on the
+extension page. (The extension icon is unaffected; it comes from the `.vsix`.)
 
-Do not pass `--no-rewrite-relative-links`. It suppresses that rewriting and ships
-the raw relative paths, which show up broken on the extension page. (It was needed
-only before `repository` was set, when `vsce` refused to package at all.)
+### Rebuilding the preview GIF
 
-The extension icon is different: it comes from the `icon` field inside the `.vsix`,
-so it works regardless of any of this.
+```sh
+ffmpeg -i assets/preview.mov \
+  -vf "fps=12,scale=900:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" \
+  -loop 0 -y assets/preview.gif
+```
+
+The `palettegen` / `paletteuse` pair is the point: GIF allows 256 colors, and
+without a palette built from this footage ffmpeg picks a generic one that bands
+the gradients badly. `bayer` suits flat UI and compresses better than the
+error-diffusion default.
+
+The GIF ships in the `.vsix` and is most of the download; `vsce` warns past 1 MB.
+Knobs by effect: `fps` (linear), `scale` (quadratic), `max_colors` (64 is usually
+indistinguishable). For reference, a 2908×1902 / 120 fps / 26 s recording gives
+~1.5 MB above, ~940 KB at `fps=10,scale=760,max_colors=64`. Trimming with
+`-ss` / `-t` beats all three.
 
 ## Publishing
 
-Only needed if you want this on the Marketplace rather than installed from a file.
-
-1. Create a publisher at <https://marketplace.visualstudio.com/manage>.
-2. Create an Azure DevOps personal access token (<https://dev.azure.com>) with
-   **Marketplace → Manage** scope, for **All accessible organizations**.
-3. Push any README images to the default branch first — see
-   [README images](#readme-images) above.
-4. Publish:
+1. Publisher at <https://marketplace.visualstudio.com/manage>.
+2. Azure DevOps PAT (<https://dev.azure.com>) with **Marketplace → Manage**, for
+   **All accessible organizations**.
+3. Push README images first.
 
 ```sh
 export VSCE_PAT=<your-token>
 pnpm exec vsce publish --no-dependencies
 ```
 
-`vsce publish patch` (or `minor` / `major`) bumps the version for you, otherwise
-bump it yourself — the Marketplace rejects a version that already exists.
-
-For the open-source registry used by VSCodium and others, publish the same
-`.vsix` with [`ovsx`](https://github.com/eclipse/openvsx):
-`ovsx publish *.vsix -p <token>`.
+`vsce publish patch` bumps the version for you; the Marketplace rejects a version
+that already exists. For VSCodium and friends, publish the same `.vsix` with
+[`ovsx`](https://github.com/eclipse/openvsx): `ovsx publish *.vsix -p <token>`.
