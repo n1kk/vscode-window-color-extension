@@ -21,7 +21,7 @@ export interface PickerState {
   allTargets: { value: Target; label: string }[];
   variants: { value: SwatchVariant; label: string }[];
   variant: SwatchVariant;
-  matched: boolean;
+  adaptive: boolean;
   pair: ThemePair | undefined;
   preview: PreviewColors;
   grids: Record<SwatchVariant, string[][]>;
@@ -38,7 +38,7 @@ export type FromWebview =
       color: string;
       targets: unknown;
       variant: string;
-      matched: boolean;
+      adaptive: boolean;
     }
   | { type: "clear" }
   | { type: "close" };

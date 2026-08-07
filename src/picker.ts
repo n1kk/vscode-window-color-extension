@@ -19,6 +19,7 @@ import {
   colorForActiveTheme,
   currentColor,
   currentTargets,
+  isAdaptive,
   isDarkTheme,
   readCustomizations,
   readPair,
@@ -87,10 +88,10 @@ export async function showPicker(extensionUri: vscode.Uri): Promise<void> {
 
   /**
    * The pair a picked color implies, and the half to show right now. Without
-   * matching, the color is used as-is under every theme.
+   * adaptive mode, the color is used as-is under every theme.
    */
-  const resolve = (color: string, variant: SwatchVariant, matched: boolean) => {
-    const pair = matched ? themePair(color, variant) : undefined;
+  const resolve = (color: string, variant: SwatchVariant, adaptive: boolean) => {
+    const pair = adaptive ? themePair(color, variant) : undefined;
     return { pair, visible: pair ? colorForActiveTheme(pair) : color };
   };
 
@@ -110,7 +111,7 @@ export async function showPicker(extensionUri: vscode.Uri): Promise<void> {
     color: applied ?? null,
     targets: appliedTargets,
     variant: defaultVariant(),
-    matched: storedPair !== undefined,
+    adaptive: isAdaptive(settings),
     pair: storedPair,
     preview: applied
       ? previewColors(applied, storedPair, appliedTargets)
@@ -146,7 +147,7 @@ export async function showPicker(extensionUri: vscode.Uri): Promise<void> {
         const { pair, visible } = resolve(
           color,
           toVariant(message.variant),
-          message.matched,
+          message.adaptive,
         );
         await applyColor(visible, targets, pair);
         post({
@@ -189,7 +190,7 @@ interface RenderOptions {
   color: string | null;
   targets: readonly Target[];
   variant: SwatchVariant;
-  matched: boolean;
+  adaptive: boolean;
   pair: ThemePair | undefined;
   preview: PreviewColors;
 }
@@ -198,7 +199,7 @@ function buildState({
   color,
   targets,
   variant,
-  matched,
+  adaptive,
   pair,
   preview,
 }: RenderOptions): PickerState {
@@ -213,7 +214,7 @@ function buildState({
       label: VARIANT_LABELS[value],
     })),
     variant,
-    matched,
+    adaptive,
     pair,
     preview,
     grids: Object.fromEntries(

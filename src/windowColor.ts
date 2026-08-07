@@ -147,6 +147,18 @@ export function readPair(): ThemePair | undefined {
   return darkHex && lightHex ? { dark: darkHex, light: lightHex } : undefined;
 }
 
+/**
+ * Whether a new pick should claim its counterpart in the other band. On by
+ * default, since one color rarely suits both theme kinds.
+ *
+ * A stored pair means yes, and a project with no color yet has not said
+ * otherwise. Only a color written *without* a pair is an explicit opt-out —
+ * which is exactly what unticking the box and picking a color leaves behind.
+ */
+export function isAdaptive(colors: Customizations): boolean {
+  return readPair() !== undefined || currentColor(colors) === undefined;
+}
+
 async function savePair(pair: ThemePair | undefined): Promise<void> {
   await vscode.workspace
     .getConfiguration()

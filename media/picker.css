@@ -48,9 +48,9 @@ legend { padding: 0 0 8px; font-weight: 600; }
 .choice input:disabled, .parts.inactive .choice { cursor: default; }
 .note { margin: 8px 0 0; color: var(--vscode-descriptionForeground); font-size: 0.92em; }
 /* Sits under the grid, so it shares the palette column's width. */
-.sync { max-width: 352px; }
-.sync .note { margin-top: 6px; font-size: 0.88em; line-height: 1.4; }
-.sync .note:empty { margin: 0; }
+.adaptive { max-width: 352px; }
+.adaptive .note { margin-top: 6px; font-size: 0.88em; line-height: 1.4; }
+.adaptive .note:empty { margin: 0; }
 .swatch {
   aspect-ratio: 1; padding: 0; border: none; border-radius: 2px; cursor: pointer;
 }

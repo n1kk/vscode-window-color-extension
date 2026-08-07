@@ -27,7 +27,7 @@ const grids = STATE.grids;
 const swatches = byId("swatches");
 const pairNote = byId("pairNote");
 const parts = byId("parts");
-const sync = byId<HTMLInputElement>("sync");
+const adaptiveBox = byId<HTMLInputElement>("adaptive");
 
 /**
  * The chosen color, or null when the project has none. The swatches are the only
@@ -38,7 +38,7 @@ let selected: string | null = STATE.color;
 // ---------------------------------------------------------------- build the DOM
 
 swatches.style.setProperty("--hue-steps", String(STATE.hueSteps));
-sync.checked = STATE.matched;
+adaptiveBox.checked = STATE.adaptive;
 
 for (const { value, label } of STATE.variants) {
   const button = document.createElement("button");
@@ -210,7 +210,7 @@ function markSelected(color: string): void {
 
 const mode = () =>
   document.querySelector<HTMLInputElement>('input[name="mode"]:checked')!.value;
-const matched = () => sync.checked;
+const adaptive = () => adaptiveBox.checked;
 const targets = () => boxes.filter((box) => box.checked).map((box) => box.value);
 const current = () => selected ?? "";
 
@@ -228,7 +228,7 @@ function commit(): void {
     color: selected,
     targets: targets(),
     variant: activeVariant,
-    matched: matched(),
+    adaptive: adaptive(),
   });
 }
 
@@ -236,7 +236,7 @@ function commit(): void {
 window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
   const message = event.data;
   if (message.type === "variant") {
-    switchVariant(message.variant, matched());
+    switchVariant(message.variant, adaptive());
   } else if (message.type === "pair") {
     lastPair = message.pair;
     paintPreview(message.preview);
@@ -281,7 +281,7 @@ for (const box of boxes) {
   });
 }
 
-sync.addEventListener("change", commit);
+adaptiveBox.addEventListener("change", commit);
 
 byId<HTMLButtonElement>("clear").addEventListener("click", () => {
   // Drop the selection too, so a later toggle does not resurrect the old color.

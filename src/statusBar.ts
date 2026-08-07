@@ -7,8 +7,8 @@ import {
   currentColor,
   currentTargets,
   hasWorkspace,
+  isAdaptive,
   readCustomizations,
-  readPair,
 } from "./windowColor";
 
 /**
@@ -73,7 +73,7 @@ async function commit(hex: string): Promise<void> {
     return;
   }
   const colors = readCustomizations();
-  const pair = readPair() ? themePair(hex, defaultVariant()) : undefined;
+  const pair = isAdaptive(colors) ? themePair(hex, defaultVariant()) : undefined;
   const visible = pair ? colorForActiveTheme(pair) : hex;
   await applyColor(visible, currentTargets(colors), pair);
 }
